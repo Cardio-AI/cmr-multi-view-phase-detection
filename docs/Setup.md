@@ -19,7 +19,7 @@ conda env create --file environment.yml
 ```
 - Activate environment
 ```
-conda activate cmr-las
+conda activate cmr-phases
 ```
 - Install a helper to automatically change the working directory to the project root directory
 ```

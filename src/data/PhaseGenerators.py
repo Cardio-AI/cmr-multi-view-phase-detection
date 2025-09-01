@@ -437,12 +437,9 @@ class PhaseRegressionGenerator_v2(DataGenerator):
         x = self.IMAGES[ID]
         # use the load_masked_img wrapper to enable masking of the images by any label,
         # currently not needed, but nice to have for later experiments
-        if self.NNUNET_SEG:
-            from src.models.train_and_predict_nnUNet import predict_segmentation_nnU_Net
-            model_inputs = predict_segmentation_nnU_Net(self.NNUNET_SEG, self.IMAGES[ID])
-        else:
-            model_inputs = load_masked_img(sitk_img_f=x, mask=self.MASKING_IMAGE,
-                                           masking_values=self.MASKING_VALUES, replace=self.REPLACE_WILDCARD)
+
+        model_inputs = load_masked_img(sitk_img_f=x, mask=self.MASKING_IMAGE,
+                                       masking_values=self.MASKING_VALUES, replace=self.REPLACE_WILDCARD)
         gt_length = model_inputs.GetSize()[-1]
         assert (gt_length <= self.T_SHAPE), 'CMR sequence is longer ({}) than defined network input shape ({})'.format(
             model_inputs.GetSize()[-1], self.T_SHAPE)

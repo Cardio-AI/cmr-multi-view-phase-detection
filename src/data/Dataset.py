@@ -305,7 +305,7 @@ def extract_id(filename):
     # Define patterns and their regex
     patterns = [
         r'\d+-([a-zA-Z0-9]+)_\d{4}-\d{2}-\d{2}.*',  # Pattern 1 (GCN): 0000-0ae4r74l_1900-01-01_...
-        r'(\d+)_LA_CINE.*',  # Pattern 2 (MnM2): 039_LA_CINE.nii.gz
+        r'(\d+)_LA_CINE.*',  # Pattern 2 (MnMs2): 039_LA_CINE.nii.gz
         r'patient(\d+)_.*'  # Pattern 3 (ACDC): patient001_4d.nii.gz
     ]
 

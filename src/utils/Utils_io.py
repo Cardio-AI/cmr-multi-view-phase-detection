@@ -1,18 +1,13 @@
 import glob
 import os, errno
 import logging
-# from time import time
-# import platform
+import numpy as np
 
-# if not platform.system() == 'Windows':
-    # import matplotlib as mpl
-    #mpl.use('TkAgg')
 try:
     import matplotlib.pyplot as plt
     import json
 except Exception as e:
     print('Import of matplotlib or json failed with: {} \n try to install them with pip install...')
-
 
 # define some helper classes and a console and file logger
 class ConsoleAndFileLogger:
@@ -69,7 +64,6 @@ class ConsoleAndFileLogger:
         logging.info('Log file: {}'.format(log_f))
         logging.info('Log level for console: {}'.format(logging.getLevelName(log_lvl)))
 
-
 def ensure_dir(file_path):
     """
     Make sure a directory exists or create it
@@ -118,19 +112,6 @@ def save_plot(fig, path, filename='', override=False, tight=True):
     logging.debug('Image saved: {}'.format(os.path.join(path, newname)))
     # free memory, close fig
     plt.close(fig)
-
-
-# def get_metadata_maybe(sitk_img, key, default='not_found'):
-#     # helper for unicode decode errors
-#     try:
-#         value = sitk_img.GetMetaData(key)
-#     except Exception as e:
-#         logging.debug('key not found: {}, {}'.format(key, e))
-#         value = default
-#     # need to encode/decode all values because of unicode errors in the dataset
-#     if not isinstance(value, int):
-#         value = value.encode('utf8', 'backslashreplace').decode('utf-8').replace('\\udcfc', 'ue')
-#     return value
 
 
 def init_config(config, save=True):
@@ -193,6 +174,7 @@ def init_json(json_data, file_path):
 
     return json_data
 
+
 def get_json(search_pattern, file_path):
     search_path = os.path.join(file_path, search_pattern)
     files = sorted(glob.glob(search_path))
@@ -203,6 +185,7 @@ def get_json(search_pattern, file_path):
 
     print(f"Config file: {files}")
     return files
+
 
 def get_post_processing(json_file):
     with open(json_file) as json_file:
@@ -216,3 +199,127 @@ def get_post_processing(json_file):
     else:
         ret["mask_channels"] = []
     return ret
+
+
+
+def write_random_example_4d_files_to_disk(PRETRAINED_SEG, config, example_path, moved, number_of_examples, segmentation,
+                                          vects, x_val_lax, norm_thresh=55, connected_component_filter=None, mask_channels=None):
+
+    if number_of_examples == None:
+        number_of_examples = vects.shape[0] - 1  # export all patients
+    else:
+        number_of_examples = 1
+    np.random.seed(42)
+    examples = np.random.choice(np.array(range(vects.shape[0])), size=number_of_examples, replace=False)
+    logging.info('Saving example patients with direction as nrrd')
+
+    # order of moved axis is wrong, so rearrange them:
+    moved = np.transpose(moved, (0, 1, 4, 2, 3))
+    focus_size = round(moved.shape[-1] / 96)  # Setting size of focus point in depending on the size of the image
+
+    write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
+                           vects, x_val_lax, norm_thresh=norm_thresh, connected_component_filter=connected_component_filter, mask_channels=mask_channels)
+
+
+def write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
+                           vects, x_val_lax, norm_thresh=55, connected_component_filter=None, mask_channels=None):
+    import SimpleITK as sitk
+    import os
+    from src.models.predict_phase_reg_model import interpret_deformable
+
+    for example in examples:
+        dir_1d_mean, directions, norm_1d_mean, norm_nda, ct, _ = interpret_deformable(vects_nda=vects[example],
+                                                                                      masks=segmentation[
+                                                                                          example] if PRETRAINED_SEG else None,
+                                                                                      mask_channels=mask_channels
+                                                                                      if PRETRAINED_SEG else None,
+                                                                                      ct_calculation=[1, 2, 3],
+                                                                                      norm_percentile=norm_thresh,
+                                                                                      component_padding=
+                                                                                      connected_component_filter)
+
+        if np.ma.is_masked(directions):
+            directions[directions.mask] = -10
+            # directions = directions.data * ~directions.mask
+        if np.ma.is_masked(norm_nda):
+            norm_nda = norm_nda.data * ~norm_nda.mask
+
+        zeros = np.zeros_like(moved[example])
+        zeros[:, :,
+        int(ct[0] - focus_size):int(ct[0] + focus_size),
+        int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1
+
+        # Testen ob es auch direkt mit GetImageFromArray klappt, ohne for schleifen iteration
+        sitk_images = [sitk.GetImageFromArray(vol.astype('float32')) for vol in moved[example]]
+
+        sitk_vects = [sitk.GetImageFromArray(vol.astype('float32'), isVector=True) for vol in
+                      np.transpose(vects[example], (3, 1, 2, 0))]
+        sitk_dir = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(directions)]
+        sitk_norm = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(norm_nda)]
+        sitk_foc = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in zeros]
+
+        # Define spacing for saving the images
+        spacing = config.get('SPACING', (2.5, 2.5))
+        spacing = list(reversed(spacing)) + [1.0, 1.0]
+
+        elem = x_val_lax[example]
+        file_type = '.nrrd' if '.nrrd' in elem else '.nii.gz'
+
+        # Save image, vector, direction, norm and focus point each as nrrd/NIFTI
+        export_img_f_name = os.path.join(example_path, os.path.basename(elem))
+        save_sitk(sitk_images, spacing, export_img_f_name)
+
+        export_vec_f_name = os.path.join(example_path,
+                                         os.path.basename(elem).replace(file_type, '_vec.nrrd'))
+        save_sitk(sitk_vects, spacing, export_vec_f_name)
+
+        export_dir_f_name = os.path.join(example_path,
+                                         os.path.basename(elem).replace(file_type, '_dir.nrrd'))
+        save_sitk(sitk_dir, spacing, export_dir_f_name)
+
+        export_norm_f_name = os.path.join(example_path,
+                                          os.path.basename(elem).replace(file_type, '_norm.nrrd'))
+        save_sitk(sitk_norm, spacing, export_norm_f_name)
+
+        export_foc_f_name = os.path.join(example_path,
+                                         os.path.basename(elem).replace(file_type, '_foc.nrrd'))
+        save_sitk(sitk_foc, spacing, export_foc_f_name)
+
+        if PRETRAINED_SEG:
+            from src.models.predict_phase_reg_model import seg_based_direction
+            sitk_mask = [sitk.GetImageFromArray(np.flipud(vol.astype(np.uint8))) for vol in np.transpose(segmentation[example], (0, 3, 1, 2))]
+            new_mask_clean = sitk.JoinSeries(sitk_mask)
+            new_mask_clean.SetSpacing(spacing)
+            export_mask_f_name = os.path.join(example_path,
+                                              os.path.basename(elem).replace(file_type, '_mask.nrrd'))
+            sitk.WriteImage(new_mask_clean, export_mask_f_name)
+            seg_based_direction(vects[example], moved[example], segmentation[example], x_val_lax[example],
+                                focus_size, example_path, config, file_type)
+
+    return
+
+
+def save_sitk(sitk_img, spacing, export_f_name):
+    """
+    Save a sitk image to disk.
+    """
+    import SimpleITK as sitk
+    new_img_clean = sitk.JoinSeries(sitk_img)
+    new_img_clean.SetSpacing(spacing)
+    sitk.WriteImage(new_img_clean, export_f_name)
+    return new_img_clean
+
+
+def rearrange_axis_of_ndarray(array, order=(1, 0, 2, 3), additional_row=True):
+    """
+    This method rearranges the axis of an ndarray.
+    :param array: ndarray to be rearranged
+    :param order: order of axis to be rearranged to
+    :param additional_row: boolean to add a row to the array
+    :return: ndarray rearranged
+    """
+    if additional_row:
+        array = array[np.newaxis, :, :, :]
+    array = np.transpose(array, order)
+    return array
+

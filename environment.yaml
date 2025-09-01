@@ -1,4 +1,4 @@
-name: cmr-las
+name: cmr-phases
 channels:
   - defaults
 dependencies:
@@ -226,5 +226,4 @@ dependencies:
     - wrapt==1.12.1
     - xarray==2023.1.0
     - xgboost==1.7.3
-prefix: /home/anaconda3/envs/cmr-las
-
+prefix: /home/anaconda3/envs/cmr-phases

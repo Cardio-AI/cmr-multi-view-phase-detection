@@ -17,7 +17,7 @@ Our trainings script supports single- and multi-GPU training (local or  cluster)
    - inmemory <true/false>         
     ```
     -  ```cfg_reg ```: Path to an experiment config (examples in ```data/configs```)
-    - ```data```: Root folder with 3d nrrd or nii.gz files (4CH single slice cine CMR; see <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Data.md">data/Data</a>)
+    - ```data```: Root folder with 4d (sax) 3d (4CH) nrrd or nii.gz files (4CH single slice cine CMR; see <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Data.md">data/Data</a>)
     - ```data_json```: Path to dataset.json, which contains all necessary information about labels, suffix and post-processing  (examples in ```data/configs```).
     - ```inmemory```: Enables in-memory pre-processing for cluster-based trainings
 

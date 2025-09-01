@@ -31,7 +31,7 @@ def predict(cfg_file, json_file=None, data_root='', c2l=False, exp=None, number_
     from logging import info
     import numpy as np
     from src.data.Dataset import get_trainings_files
-    from src.utils.Utils_io import ConsoleAndFileLogger, ensure_dir
+    from src.utils.Utils_io import ConsoleAndFileLogger, ensure_dir, write_random_example_4d_files_to_disk
     from src.data.PhaseGenerators import PhaseRegressionGenerator_v2
     from src.models.PhaseRegModels import PhaseRegressionModel
     from ProjectRoot import change_wd_to_project_root
@@ -201,6 +201,7 @@ def predict(cfg_file, json_file=None, data_root='', c2l=False, exp=None, number_
             segmentation = None
 
         junk = junk + 1
+
         write_random_example_4d_files_to_disk(PRETRAINED_SEG or NNUNET_SEG, config, example_path, moved,
                                               number_of_examples,
                                               segmentation,
@@ -271,100 +272,6 @@ def get_largest_connected_components(data, data_bin_ma=None):
     return largest_component, labeled_ma
 
 
-def write_random_example_4d_files_to_disk(PRETRAINED_SEG, config, example_path, moved, number_of_examples, segmentation,
-                                          vects, x_val_lax, norm_thresh=55, connected_component_filter=None, mask_channels=None):
-
-    if number_of_examples == None:
-        number_of_examples = vects.shape[0] - 1  # export all patients
-    else:
-        number_of_examples = 1
-    np.random.seed(42)
-    examples = np.random.choice(np.array(range(vects.shape[0])), size=number_of_examples, replace=False)
-    logging.info('Saving example patients with direction as nrrd')
-
-    # order of moved axis is wrong, so rearrange them:
-    moved = np.transpose(moved, (0, 1, 4, 2, 3))
-    focus_size = round(moved.shape[-1] / 96)  # Setting size of focus point in depending on the size of the image
-
-    write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
-                           vects, x_val_lax, norm_thresh=norm_thresh, connected_component_filter=connected_component_filter, mask_channels=mask_channels)
-
-
-def write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
-                           vects, x_val_lax, norm_thresh=55, connected_component_filter=None, mask_channels=None):
-    import SimpleITK as sitk
-    import os
-
-    for example in examples:
-        dir_1d_mean, directions, norm_1d_mean, norm_nda, ct, _ = interpret_deformable(vects_nda=vects[example],
-                                                                                      masks=segmentation[
-                                                                                          example] if PRETRAINED_SEG else None,
-                                                                                      mask_channels=mask_channels
-                                                                                      if PRETRAINED_SEG else None,
-                                                                                      ct_calculation=[1, 2, 3],
-                                                                                      norm_percentile=norm_thresh,
-                                                                                      component_padding=
-                                                                                      connected_component_filter)
-
-        if np.ma.is_masked(directions):
-            directions[directions.mask] = -10
-            # directions = directions.data * ~directions.mask
-        if np.ma.is_masked(norm_nda):
-            norm_nda = norm_nda.data * ~norm_nda.mask
-
-        zeros = np.zeros_like(moved[example])
-        zeros[:, :,
-        int(ct[0] - focus_size):int(ct[0] + focus_size),
-        int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1
-
-        # Testen ob es auch direkt mit GetImageFromArray klappt, ohne for schleifen iteration
-        sitk_images = [sitk.GetImageFromArray(vol.astype('float32')) for vol in moved[example]]
-
-        sitk_vects = [sitk.GetImageFromArray(vol.astype('float32'), isVector=True) for vol in
-                      np.transpose(vects[example], (3, 1, 2, 0))]
-        sitk_dir = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(directions)]
-        sitk_norm = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(norm_nda)]
-        sitk_foc = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in zeros]
-
-        # Define spacing for saving the images
-        spacing = config.get('SPACING', (2.5, 2.5))
-        spacing = list(reversed(spacing)) + [1.0, 1.0]
-
-        elem = x_val_lax[example]
-        file_type = '.nrrd' if '.nrrd' in elem else '.nii.gz'
-
-        # Save image, vector, direction, norm and focus point each as nrrd/NIFTI
-        export_img_f_name = os.path.join(example_path, os.path.basename(elem))
-        save_sitk(sitk_images, spacing, export_img_f_name)
-
-        export_vec_f_name = os.path.join(example_path,
-                                         os.path.basename(elem).replace(file_type, '_vec.nrrd'))
-        save_sitk(sitk_vects, spacing, export_vec_f_name)
-
-        export_dir_f_name = os.path.join(example_path,
-                                         os.path.basename(elem).replace(file_type, '_dir.nrrd'))
-        save_sitk(sitk_dir, spacing, export_dir_f_name)
-
-        export_norm_f_name = os.path.join(example_path,
-                                          os.path.basename(elem).replace(file_type, '_norm.nrrd'))
-        save_sitk(sitk_norm, spacing, export_norm_f_name)
-
-        export_foc_f_name = os.path.join(example_path,
-                                         os.path.basename(elem).replace(file_type, '_foc.nrrd'))
-        save_sitk(sitk_foc, spacing, export_foc_f_name)
-
-        if PRETRAINED_SEG:
-            sitk_mask = [sitk.GetImageFromArray(np.flipud(vol.astype(np.uint8))) for vol in np.transpose(segmentation[example], (0, 3, 1, 2))]
-            new_mask_clean = sitk.JoinSeries(sitk_mask)
-            new_mask_clean.SetSpacing(spacing)
-            export_mask_f_name = os.path.join(example_path,
-                                              os.path.basename(elem).replace(file_type, '_mask.nrrd'))
-            sitk.WriteImage(new_mask_clean, export_mask_f_name)
-            seg_based_direction(vects[example], moved[example], segmentation[example], x_val_lax[example],
-                                focus_size, example_path, config, file_type)
-
-    return
-
 def seg_based_direction(vect, moved, segmentation, x_val_lax, focus_size, example_path, config,  targetfile_type='nii'):
     import SimpleITK as sitk
     import os
@@ -424,30 +331,6 @@ def seg_based_direction(vect, moved, segmentation, x_val_lax, focus_size, exampl
     sitk.WriteImage(new_dir_clean_seg, export_dir_seg_f_name)
     sitk.WriteImage(new_norm_clean_seg, export_norm_f_seg_name)
     sitk.WriteImage(new_foc_clean_seg, export_foc_seg_f_name)
-
-def save_sitk(sitk_img, spacing, export_f_name):
-    """
-    Save a sitk image to disk.
-    """
-    import SimpleITK as sitk
-    new_img_clean = sitk.JoinSeries(sitk_img)
-    new_img_clean.SetSpacing(spacing)
-    sitk.WriteImage(new_img_clean, export_f_name)
-    return new_img_clean
-
-
-def rearrange_axis_of_ndarray(array, order=(1, 0, 2, 3), additional_row=True):
-    """
-    This method rearranges the axis of an ndarray.
-    :param array: ndarray to be rearranged
-    :param order: order of axis to be rearranged to
-    :param additional_row: boolean to add a row to the array
-    :return: ndarray rearranged
-    """
-    if additional_row:
-        array = array[np.newaxis, :, :, :]
-    array = np.transpose(array, order)
-    return array
 
 
 def get_rv_outline_as_mask(masks, include_septum=False):
