@@ -478,3 +478,43 @@ def plot_displacement(col_titles, first_m, first_vol, moved, moved_m, picks, sec
         axes[0, i].set_title(col_titles[i])
     fig.subplots_adjust(wspace=0.0, hspace=0.0)
     return fig
+
+
+def plot_two_direction_instance(dir_1d_mean_a, dir_1d_mean_b, direction_a, direction_b):
+    import matplotlib.pyplot as plt
+    from src.visualization.Visualize import show_2D_or_3D
+    # X-axis values
+
+    x = range(len(dir_1d_mean_a))
+    fig = plt.figure(figsize=(25,4))
+    rows = 3
+    # DIR 2D+t
+    dir_2d_t = direction_a.copy()
+    if np.ma.is_masked(direction_a): dir_2d_t = dir_2d_t.data * ~direction_a.mask
+    div_cmap = 'bwr'
+    fig = show_2D_or_3D(dir_2d_t, allow_slicing=False, cmap=div_cmap, fig=fig, interpolation=None, vmin=-1, vmax=1)
+    ax_ = fig.get_axes()[0]
+    _ = ax_.set_yticks([])
+    _ = ax_.set_xticks([])
+    ax = fig.get_axes()[1]
+    _ = ax.set_ylabel(r'$\alpha$ ' + '\n2d+t')  # \nmid
+    _ = ax.set_yticks([])
+    _ = ax.set_xticks([])
+    cax = fig.add_axes([0.45, 0.84, 0.1, 0.03])
+    cb = fig.colorbar(ax.get_images()[len(ax.get_images()) // 2], cax=cax, orientation='horizontal')
+    cb.ax.tick_params(color="black", labelsize=10, labelcolor='black')
+
+    # Plotting the curves
+    pos = 2
+    ax2 = fig.add_subplot(rows, 1, pos)
+    _ = ax2.plot(x, dir_1d_mean_a, label='Direction LV', color = 'orange')
+    _ = ax2.plot(x, dir_1d_mean_b, label='Direction RV', color = 'green')
+
+    # Adding labels and title
+    ax2.set_xlabel('Time (t)')
+    ax2.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+    return fig

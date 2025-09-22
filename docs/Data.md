@@ -32,8 +32,16 @@ Please contact us if you are interested in these labels.
 
 ### Structure
 
-The project expects a single data-root folder, which should at least contain either a folder  ```lax ``` for 4CH or ```sax```  for SAX with the cine CMR files.
-Additionally, the folder can contain a csv file for splitting the data **df_kfold.csv** and one with the groundtruth keyframe annotations.
+The project expects a single data-root folder.
+This folder must contain at least oner of the following subfolders
+- ```lax ``` for 4CH cine CMR
+- ```sax```  for SAX cine CMR 
+
+The folder name must be specified int the ``"view"`` field of ``dataset.json``.
+Please use **"sax"** if you are working with 3D+t image stacks (e.g., SAX CMR).
+For 2D+t data, you can choose any naming convention, but we recommend **"lax"**.
+
+Optionally, it may contain a csv file for splitting the data **df_kfold.csv** and one with the groundtruth keyframe annotations.
 
  ```
    ├── lax/             # folder with cine 4CH CMR
@@ -56,19 +64,19 @@ If you want to use your own data:
   - If your sequence has more than 39 frames, increase ```"T_SHAPE" ``` accordingly (t = max. sequence length + 1).
 
 #### File naming conventions
-File names are used to extract patient IDS, which must mathc those in phases.csv and df_kfold.csv.
+File names are used to extract patient IDS, which must match those in phases.csv and df_kfold.csv.
 
 Supported regex patterns (from source datasets):
 - ```r'\d+-([a-zA-Z0-9]+)_\d{4}-\d{2}-\d{2}.*'```  -> GCN: 0000-0ae4r74l_1900-01-01_...
 - ```r'(\d+)_LA_CINE.*'```  -> M&Ms and M&Ms-2: 039_LA_CINE.nii.gz
 - ```r'patient(\d+)_.*'```  -> ACDC: patient001_4d.nii.gz
-- 
+
 If your dataset uses a different convention, add your regex pattern to:
 ```src/data/Dataset.py -> extract_id```.
 
 ### Metadata files
 
-#### phases.csv - Ground-truth keyframes
+#### ``phases.csv`` - Ground-truth keyframes
 - Required for evaluation (cyclic frame difference calculation).
 - Format: one row per patient, one column per keyframe
 - Example
@@ -79,11 +87,11 @@ If your dataset uses a different convention, add your regex pattern to:
     ...
     ``` 
 
-#### df_kfold.csv - K-fold split definition
+#### ``df_kfold.csv`` - K-fold split definition
 - Required if you want cross-validation
 - Format: one row per patient per fold. Must include patient ID, fold index, and split assignment (train/test)
 - Example (4-fold):
--     
+    
   ``` 
   patient, fold, modality
   001_LA, 0, train
@@ -107,10 +115,14 @@ If your dataset uses a different convention, add your regex pattern to:
   004_LA, 3, test
   ...
   ``` 
-#### dataset.json - Dataset description
-- Defines labels, suffix, and post-processing steps.
-- Used by the scripts to standardize dataset handling.
-- Example:
+#### ``dataset.json`` - Dataset description
+This file standardizes dataset handling across scripts.
+It defines:
+- Labels and their numeric encoding
+- File suffix and endings 
+- Post-processing steps.
+
+##### Example:
   ```
   { 
      "channel_names": {
@@ -118,21 +130,45 @@ If your dataset uses a different convention, add your regex pattern to:
      }, 
      "labels": { 
         "background": 0,
-        "RV": 1,
-        "MLV": 2,
-        "LVC": 3
+        "LV": 1,
+        "MYO": 2,
+        "RV": 3
      }, 
      "suffix": {
         "image_suffix": "CINE",
         "mask_suffix": "", 
         "file_ending": ".nii.gz"	
      },
+    "view":"LAX",
+    "use_segmentation": false,
      "start_id": 0,
      "post_processing":{
          "focus_point": "MSE",
-         "use_segmentation": false,
          "norm_threshold": 40,
-         "cc_filter": None
+         "cc_filter": None,
+         "use_segmentation": false,
+         "mask_channels": null
          }
      }
   ```
+
+**Key points**
+  
+- ``"view"`` must match the folder name containing your data.
+  - use ``"sax"`` for 3D+t image stacks
+  - For 2D+t data you can use any folder name
+- When specifying file suffixes in ``dataset.json`` (e.g., "image_suffix": "CINE"), 
+ensure filenames follow the same pattern so that image–mask matching works reliably (see Cine CMR - File naming conventions).
+- **Post-processing parameters**
+  - ``"focus_point"``:
+    - ``"MSE"``: center of mass of self-supervised mask
+    - ``"VOL"``: center of the whole volume/image
+    - ``"Septum"`` or label indices (e.g. ``[1]`` for LV cavity, ``[1,2,3]`` for whole heart) if segmentation is available
+  - ``"norm_threshold"``: Percentile of norm threshold (0-100)
+  - ``"cc_filter"``: connected component filtering (``null`` to disable)
+- Segmentation settings:
+  - ``"use_segmentation": true``: masks the data using segmentation labels instead of self-supervised masking
+  - If ``"mask_channels"`` is ``null`` or ``[]``, all labels (except "background") are used.
+  - To restrict masking, specify label IDS explicitly (e.g. ``[2]`` for LV myocardium)
+  
+

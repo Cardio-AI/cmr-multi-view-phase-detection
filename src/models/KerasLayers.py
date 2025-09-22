@@ -468,7 +468,7 @@ class UpSampleBlock(Layer):
                        'pad': self.pad})
         return config
 
-#
+
 def conv_layer_fn(inputs, filters=16, f_size=(3, 3, 3), activation='elu', batch_norm=True, kernel_init='he_normal',
                   pad='same', bn_first=False, ndims=2, custom_name=''):
     """
@@ -504,7 +504,7 @@ def conv_layer_fn(inputs, filters=16, f_size=(3, 3, 3), activation='elu', batch_
 
     return conv1
 
-#
+
 def downsampling_block_fn(inputs, filters=16, f_size=(3, 3, 3), activation='elu', drop=0.3, batch_norm=True,
                           kernel_init='he_normal', pad='same', m_pool=(2, 2), bn_first=False, ndims=2):
     """
@@ -530,7 +530,6 @@ def downsampling_block_fn(inputs, filters=16, f_size=(3, 3, 3), activation='elu'
     conv1 = Dropout(drop)(conv1)
     conv1 = conv_layer_fn(inputs=conv1, filters=filters, f_size=f_size, activation=activation, batch_norm=batch_norm,
                           kernel_init=kernel_init, pad=pad, bn_first=bn_first, ndims=ndims)
-
     p1 = pool(m_pool, padding=pad)(conv1)
 
     return (conv1, p1)
@@ -591,20 +590,24 @@ def upsampling_block_fn(lower_input, conv_input, use_upsample=True, filters=16, 
 
 
 flow2direction_lambda = tf.keras.layers.Lambda(
-    lambda x: get_angle_tf(x[0], x[1]), name='flow2direction')
-minmax_lambda = lambda x: x[1] + (
-            ((x[0] - np.min(x[0])) * (x[2] - x[1])) / (np.max(x[0]) - np.min(x[0]) + sys.float_info.epsilon))
+        lambda x: get_angle_tf(x[0], x[1]), name='flow2direction')
+
+minmax_lambda = lambda x: x[1] + (((x[0] - np.min(x[0])) * (x[2] - x[1])) / (np.max(x[0]) - np.min(x[0]) + sys.float_info.epsilon))
 
 
 def get_focus_tf(p, dim=[12, 12, 12]):
     return tf.cast(
+        tf.tile(tf.convert_to_tensor([*p])[tf.newaxis, tf.newaxis, tf.newaxis, ...],
+                (*dim, 1)) if len(dim) == 2 else
         tf.tile(tf.convert_to_tensor([*p])[tf.newaxis, tf.newaxis, ...],
-                (*dim, 1)), tf.float32)
-
+                (*dim, 1))
+        , tf.float32)
 
 # returns a matrix with the indicies as values, similar to np.indicies
 def get_idxs_tf(x):
     return tf.cast(
+        tf.reshape(tf.where(tf.ones((x[0], x[1], x[2]))), (x[0], x[1], x[2], 3))
+        if len(x) == 3 else
         tf.reshape(tf.where(tf.ones((x[0], x[1]))), (x[0], x[1], 2)),
         tf.float32)
 

@@ -70,7 +70,7 @@ def load_masked_img(sitk_img_f, mask=False, masking_values=[1, 2, 3], replace=('
 
     return img_original
 
-def resample_3D(sitk_img, size=(256, 256, 12), spacing=(1.25, 1.25, 8), interpolate=sitk.sitkNearestNeighbor, dtype=None):
+def resample_3D(sitk_img, size=(256, 256, 12), spacing=(1.25, 1.25, 8), interpolate=sitk.sitkNearestNeighbor, cmr3D=False):
     """
     resamples an 3D sitk image or numpy ndarray to a new size with respect to the giving spacing
     This method expects size and spacing in sitk format: x, y, z
@@ -93,7 +93,7 @@ def resample_3D(sitk_img, size=(256, 256, 12), spacing=(1.25, 1.25, 8), interpol
     size = [int(elem) for elem in size]
     spacing = [float(elem) for elem in spacing]
 
-    if sitk_img.GetDimension() == 3:
+    if not cmr3D and sitk_img.GetDimension() == 3:
         sitk_img = sitk_img[:,:,0]
     resampler = sitk.ResampleImageFilter()
     resampler.SetInterpolator(interpolate)

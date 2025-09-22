@@ -4,6 +4,7 @@ import os
 import platform
 import random
 from concurrent.futures import as_completed
+from random import choice
 from time import time
 
 import SimpleITK as sitk
@@ -100,7 +101,7 @@ class BaseGenerator(tensorflow.keras.utils.Sequence):
         self.on_epoch_end()
 
         if self.AUGMENT:
-            logging.info('Data.md will be augmented (shift,scale and rotate) with albumentation')
+            logging.info('Data will be augmented (shift,scale and rotate) with albumentation')
 
         else:
             logging.info('No augmentation')
@@ -294,8 +295,10 @@ class PhaseRegressionGenerator_v2(DataGenerator):
         self.ROLL2LV = config.get('ROLL2LV', True)  # default, center crop according to the mean mse along t
         workers = config.get('WORKERS', 12)
 
+
         self.PRETRAINED_SEG = config.get('PRETRAINED_SEG', False)
-        self.NNUNET_SEG = config.get('NNUNET_SEG', False)
+        self.NNUNET_SEG = config.get('PRECOMPUTED_MASKS', False)
+        self.CMR3D = config.get('CMR3D', False)
 
         self.IN_MEMORY = in_memory
         self.THREAD_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
@@ -434,10 +437,18 @@ class PhaseRegressionGenerator_v2(DataGenerator):
     def __fix_preprocessing__(self, i, ID):
         t1 = time()
 
+        apply_hist_matching = False
+        if self.HIST_MATCHING and random.random() <= self.AUGMENT_PROB:
+            apply_hist_matching = True
+            ignore_z = 1
+            # use a random image, given to this generator, as histogram template for histogram matching augmentation
+            ref = sitk.GetArrayFromImage(sitk.ReadImage((choice(self.IMAGES))))
+            ref = ref[choice(list(range(ref.shape[0] - 1))), choice(list(range(ref.shape[1] - 1))[ignore_z:-ignore_z])]
+
         x = self.IMAGES[ID]
+
         # use the load_masked_img wrapper to enable masking of the images by any label,
         # currently not needed, but nice to have for later experiments
-
         model_inputs = load_masked_img(sitk_img_f=x, mask=self.MASKING_IMAGE,
                                        masking_values=self.MASKING_VALUES, replace=self.REPLACE_WILDCARD)
         gt_length = model_inputs.GetSize()[-1]
@@ -486,14 +497,16 @@ class PhaseRegressionGenerator_v2(DataGenerator):
                                     resample_3D(sitk_img=x[0],
                                                 size=x[1],
                                                 spacing=target_spacing,
-                                                interpolate=self.IMG_INTERPOLATION),
+                                                interpolate=self.IMG_INTERPOLATION,
+                                                cmr3D=self.CMR3D),
                                     zip(model_inputs, new_size_inputs)))
             if self.NNUNET_SEG:
                 mask_inputs = list(map(lambda x:
                                        resample_3D(sitk_img=x[0],
                                                    size=x[1],
                                                    spacing=target_spacing,
-                                                   interpolate=sitk.sitkNearestNeighbor),
+                                                   interpolate=sitk.sitkNearestNeighbor,
+                                                   cmr3D=self.CMR3D),
                                        zip(mask_inputs, new_size_inputs)))
 
         logging.debug('Spacing after resample: {}'.format(model_inputs[0].GetSpacing()))
@@ -554,16 +567,16 @@ class PhaseRegressionGenerator_v2(DataGenerator):
         # third split+maximise element-wise on both matrices
         # we normalise before definition of the target, to make sure both are from the same distribution
 
-        model_inputs = np.tile(model_inputs, (reps,  1, 1))[:self.T_SHAPE]
-        model_targets = np.tile(model_targets, (reps,  1, 1))[:self.T_SHAPE]
+        model_inputs = np.tile(model_inputs, (reps, 1, 1, 1))[:self.T_SHAPE] if self.CMR3D else np.tile(model_inputs, (reps,  1, 1))[:self.T_SHAPE]
+        model_targets = np.tile(model_targets, (reps, 1, 1, 1))[:self.T_SHAPE] if self.CMR3D else np.tile(model_targets, (reps,  1, 1))[:self.T_SHAPE]
         onehot = np.tile(onehot, (reps, 1))[:self.T_SHAPE]
         logging.debug('onehot repeated {}:'.format(reps))
         if self.DEBUG_MODE: plt.imshow(onehot); plt.show()
 
         if self.NNUNET_SEG:
             mask_targets = np.roll(mask_inputs, shift=-1, axis=0)
-            mask_inputs = np.tile(mask_inputs, (reps, 1, 1))[:self.T_SHAPE]
-            mask_targets = np.tile(mask_targets, (reps, 1, 1))[:self.T_SHAPE]
+            mask_inputs = np.tile(mask_inputs, (reps, 1, 1, 1))[:self.T_SHAPE] if self.CMR3D else np.tile(mask_inputs, (reps, 1, 1))[:self.T_SHAPE]
+            mask_targets = np.tile(mask_targets, (reps, 1, 1))[:self.T_SHAPE] if self.CMR3D else np.tile(mask_targets, (reps, 1, 1))[:self.T_SHAPE]
 
         msk = np.ones_like(onehot)
         logging.debug('onehot pad/crop:')

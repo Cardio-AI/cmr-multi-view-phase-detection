@@ -17,3 +17,5 @@ def write_sitk(direction_nda, filename, sub_folder='directions', suffix='dir', f
     filename = os.path.join(filepath, '{}_{}{}'.format(
         os.path.basename(filename).replace(wildcard, '').replace(' ', '').replace('\n', ''), suffix, file_suffix))
     sitk.WriteImage(sitk_images, filename)
+
+

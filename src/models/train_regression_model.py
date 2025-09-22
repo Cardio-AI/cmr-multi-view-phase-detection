@@ -1,6 +1,6 @@
 import logging
 
-def train_fold(config, dataset_json, in_memory=False):
+def train_fold(config, dataset_json, view="sax", in_memory=False):
     # make sure necessary config params are given, otherwise replace with default
     import tensorflow as tf
     import numpy as np
@@ -27,7 +27,7 @@ def train_fold(config, dataset_json, in_memory=False):
     # local imports
     from src.utils.Utils_io import ConsoleAndFileLogger, init_config, init_json, ensure_dir
     from src.utils.KerasCallbacks import get_callbacks
-    from src.data.Dataset import get_trainings_files
+    from src.data.Dataset import get_trainings_files, all_files_in_df
     from src.data.PhaseGenerators import PhaseRegressionGenerator_v2
     from src.models.PhaseRegModels import PhaseRegressionModel
 
@@ -47,19 +47,24 @@ def train_fold(config, dataset_json, in_memory=False):
     TENSORBOARD_PATH = os.path.join(FOLD_PATH, 'tensorboard_logs')
     CONFIG_PATH = os.path.join(FOLD_PATH, 'config')
     SEGMENTATION_EXP = config.get("SEGMENTATION_EXP", None)
+    PRETRAINED_SEG = SEGMENTATION_EXP is not None
+    if PRETRAINED_SEG:
+        SEGMENTATION_MODEL = os.path.join(SEGMENTATION_EXP, 'model.json')
+        SEGMENTATION_WEIGHTS = os.path.join(SEGMENTATION_EXP, f'f{FOLD}', 'model', 'model.h5')
 
     ensure_dir(MODEL_PATH)
     ensure_dir(TENSORBOARD_PATH)
     ensure_dir(CONFIG_PATH)
 
-    DATA_PATH_LAX = config.get('DATA_PATH_LAX')
+    DATA_PATH_CMR = config.get('DATA_PATH_' + view)
     DF_FOLDS = config.get('DF_FOLDS', None)
     DF_META = config.get('DF_META', None)
     EPOCHS = config.get('EPOCHS', 100)
 
     ConsoleAndFileLogger(path=FOLD_PATH, log_lvl=logging.INFO)
     config = init_config(config=locals(), save=True)
-    dataset_json = init_json(dataset_json, CONFIG_PATH)
+    if type(dataset_json) is str:
+        dataset_json = init_json(dataset_json, CONFIG_PATH)
     logging.info('Is built with tensorflow: {}'.format(tf.test.is_built_with_cuda()))
     logging.info('Visible devices:\n{}'.format(tf.config.list_physical_devices()))
 
@@ -70,31 +75,36 @@ def train_fold(config, dataset_json, in_memory=False):
         file_ending = suffix["file_ending"]
 
     # get k-fold data from DATA_ROOT and subdirectories
-    x_train_lax, y_train_lax, x_val_lax, y_val_lax = get_trainings_files(data_path=DATA_PATH_LAX,
+    x_train_cmr, y_train_cmr, x_val_cmr, y_val_cmr = get_trainings_files(data_path=DATA_PATH_CMR,
                                                                          suffix=suffix,
                                                                          ftype=file_ending,
                                                                          path_to_folds_df=DF_FOLDS,
                                                                          fold=FOLD)
 
-    logging.info('LAX train CMR: {}, LAX train masks: {}'.format(len(x_train_lax), len(y_train_lax)))
-    logging.info('LAX val CMR: {}, LAX val masks: {}'.format(len(x_val_lax), len(y_val_lax)))
+    logging.info(f'{view} train CMR: {len(x_train_cmr)}, {view} train masks: {len(y_train_cmr)}')
+    logging.info(f'{view} val CMR: {len(x_val_cmr)}, {view} val masks: {len(y_val_cmr)}')
 
     t0 = time()
+    # check if we find each patient in the corresponding dataframe
+    if DF_META is not None and os.path.exists(DF_META):
+        all_given = all_files_in_df(DF_META, x_train_cmr, x_val_cmr)
+        logging.info('found all patients in df meta: {}'.format(all_given))
+
     debug = 0  # make sure single threaded
 
     # Create the batchgenerators
-    config['BATCHSIZE'] = 1
+    config['BATCHSIZE'] = 1 # 2
     if debug:
         config['SHUFFLE'] = False
         config['WORKERS'] = 1
         config['BATCHSIZE'] = 1
-    batch_generator = PhaseRegressionGenerator_v2(x_train_lax, x_train_lax, config=config, dataset_json=dataset_json, in_memory=in_memory)
+    batch_generator = PhaseRegressionGenerator_v2(x_train_cmr, x_train_cmr, config=config, dataset_json=dataset_json, in_memory=in_memory)
     val_config = config.copy()
     val_config['AUGMENT'] = False
     val_config['AUGMENT_PHASES'] = False
     val_config['HIST_MATCHING'] = False
     val_config['AUGMENT_TEMP'] = False
-    validation_generator = PhaseRegressionGenerator_v2(x_val_lax, x_val_lax, config=val_config, dataset_json=dataset_json, in_memory=in_memory)
+    validation_generator = PhaseRegressionGenerator_v2(x_val_cmr, x_val_cmr, config=val_config, dataset_json=dataset_json, in_memory=in_memory)
 
     import matplotlib.pyplot as plt
     from src.visualization.Visualize import show_2D_or_3D
@@ -176,34 +186,50 @@ def main(args=None, in_memory=False, seg_exp_path=None):
 
     EXPERIMENTS_ROOT = 'exp/'
 
-    if args.cfg:
-        import json
-        cfg = args.cfg
-        print('config given: {}'.format(cfg))
-        # load the experiment config
-        with open(cfg, encoding='utf-8') as data_file:
-            config = json.loads(data_file.read())
-
-        # Define new paths, make sure that:
-        # 1. we don't overwrite a previous config
-        # 2. cluster based trainings are compatible with saving locally (cluster/local)
-        # we don't need to initialise this config, as it should already have the correct format,
-        # The fold configs will be saved within each fold run
-        # add a timestamp and a slurm jobid to each project to make repeated experiments unique
-        EXPERIMENT = config.get('EXPERIMENT', 'UNDEFINED')
-        timestamp = str(datetime.datetime.now().strftime("%Y-%m-%d_%H_%M"))
-        if args.jobid != None: timestamp += "_{}".format(args.jobid)
-        if seg_exp_path is not None: config['SEGMENTATION_EXP'] = seg_exp_path
-        if config.get('EXP_PATH', None) is None: config['EXP_PATH'] = os.path.join(EXPERIMENTS_ROOT, EXPERIMENT, timestamp)
-
-        if args.data:  # if we specified a different data path (training from workspace or node temporal disk)
-            config['DATA_PATH_LAX'] = os.path.join(args.data, "lax/")
-            config['DF_FOLDS'] = os.path.join(args.data, "df_kfold.csv")
-            config['DF_META'] = os.path.join(args.data, "gt_phases.csv")
-
-        logging.debug(config)
-    else:
+    if not args.cfg:
         logging.error('no config given, please select one from the templates in exp/examples')
+        sys.exit(1)
+
+    import json
+    cfg = args.cfg
+    print('config given: {}'.format(cfg))
+    # load the experiment config
+    with open(cfg, encoding='utf-8') as data_file:
+        config = json.loads(data_file.read())
+
+    dataset_json = args.data_json
+    print('dataset json given: {}'.format(dataset_json))
+    # load the experiment config
+    with open(dataset_json, encoding='utf-8') as data_file:
+        dataset_json = json.loads(data_file.read())
+    CMR_view = dataset_json['view'].lower()
+    if CMR_view == "sax":
+        config["CMR3D"] = True
+    else:
+        config["CMR3D"] = False
+
+    # Define new paths, make sure that:
+    # 1. we don't overwrite a previous config
+    # 2. cluster based trainings are compatible with saving locally (cluster/local)
+    # we don't need to initialise this config, as it should already have the correct format,
+    # The fold configs will be saved within each fold run
+    # add a timestamp and a slurm jobid to each project to make repeated experiments unique
+    EXPERIMENT = config.get('EXPERIMENT', 'UNDEFINED')
+    timestamp = str(datetime.datetime.now().strftime("%Y-%m-%d_%H_%M"))
+    if args.jobid != None: timestamp += "_{}".format(args.jobid)
+    if seg_exp_path is not None: config['SEGMENTATION_EXP'] = seg_exp_path
+
+    exp_path_ = config.get('EXP_PATH', None)
+    if exp_path_ is None:
+        config['EXP_PATH'] = os.path.join(EXPERIMENTS_ROOT, EXPERIMENT, timestamp)
+        exp_path_ = os.path.join(EXPERIMENTS_ROOT, EXPERIMENT, timestamp)
+
+    if args.data:  # if we specified a different data path (training from workspace or node temporal disk)
+        config['DATA_PATH_' + CMR_view] = os.path.join(args.data, CMR_view)
+        config['DF_FOLDS'] = os.path.join(args.data, "df_kfold.csv")
+        config['DF_META'] = os.path.join(args.data, "gt_phases.csv")
+
+    logging.debug(config)
 
     if args.data_json:
         with open(args.data_json, encoding='utf-8') as data_file:
@@ -211,31 +237,31 @@ def main(args=None, in_memory=False, seg_exp_path=None):
     else:
         logging.error('no dataset given, please select one from the templates in exp/examples')
 
-    from src.models.predict_phase_reg_model import predict
+    from src.models.predict_phase_reg_model import CMRPhaseDetector
     for f in config.get('FOLDS', [0]):
         logging.info('starting fold: {}'.format(f))
         config_ = config.copy()
         config_['FOLD'] = f
         data_json_ = data_json.copy()
         data_json_['FOLD'] = f
-        cfg = train_fold(config_, data_json_, in_memory=in_memory)
-        predict(cfg, json_file=data_json_)
+        cfg = train_fold(config_, data_json_, view=CMR_view, in_memory=in_memory)
+        cmr_phase_predictor = CMRPhaseDetector(model_config=cfg, data_info_path=data_json_, exp_path= exp_path_, data_root=config['DATA_PATH_' + CMR_view])
+        cmr_phase_predictor.predict(number_of_examples=1)
         gc.collect()
         logging.info('train fold: {} finished'.format(f))
         # evaluate dice with 2D slices but phase generator
     from src.models.evaluate_phase_reg import evaluate_supervised
-    from src.models.predict_phase_reg_model import predict_phase_from_deformable
     try:
         evaluate_supervised(config.get('EXP_PATH'))
     except Exception as e:
         logging.error('{} evaluate failed with: {}'.format(config.get('EXPERIMENT'), e))
     try:
-        predict_phase_from_deformable(config.get('EXP_PATH'),
-                                      create_figures=True,
-                                      norm_thresh=50,
+        exp_path_ = cfg['EXP_PATH']
+        data_json_path = cfg["CONFIG_PATH"] + "data_json.json"
+        cmr_phase_predictor = CMRPhaseDetector(model_config=cfg, data_info_path=data_json_path, exp_path= exp_path_, data_root=config['DATA_PATH_' + CMR_view])
+        cmr_phase_predictor.predict_phase_from_deformable(config.get('EXP_PATH'),
                                       dir_axis=0,
                                       roll_by_gt=False,
-                                      mask_channels=None,
                                       ct_calculation=None
                                       )
     except Exception as e:

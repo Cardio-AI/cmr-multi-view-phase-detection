@@ -47,6 +47,7 @@ class PhaseRegressionModel:
             self.kernel_init = config.get('KERNEL_INIT', 'he_normal').lower()
             self.dim = config.get('DIM', [1, 224, 224])
             self.ndims = len(config.get('DIM', [1, 224, 224]))
+            self.CMR3D = config.get('CMR3D', False)
 
             self.add_bilstm = config.get('ADD_BILSTM', False)
             self.add_conv_bilstm = config.get('ADD_CONV_BILSTM', False)
@@ -75,7 +76,7 @@ class PhaseRegressionModel:
             self.temp_config['IMG_CHANNELS'] = 2  # we roll the temporal axis and stack t-1, t and t+1 along the last axis
             self.temporal_axis = 1
             self.PRETRAINED_SEG = config.get('PRETRAINED_SEG', False)
-            self.NNUNET_SEG = config.get('NNUNET_SEG', False)
+            self.NNUNET_SEG = config.get('PRECOMPUTED_MASKS', False)
             self.config = config
             ############################# definition of the layers and blocks ######################################
             # start with very small deformation
@@ -95,10 +96,10 @@ class PhaseRegressionModel:
             self.st_lambda_layer = keras.layers.Lambda(
                 lambda x: self.st_layer([x[..., 0:1], x[..., 1:]]), name='deformable_lambda_layer')
 
-            # Begin use_segmentation  --------------------------------------------------------------
+            # Begin segmentation  --------------------------------------------------------------
             def create_seg_model(model_path, weights_path):
                 model_path = os.path.normpath(model_path)
-                logging.info(f'Loading unet for use_segmentation from "{model_path}" and "{weights_path}"')
+                logging.info(f'Loading unet for segmentation from "{model_path}" and "{weights_path}"')
                 model_json = open(model_path, 'r').read()
                 model = tf.keras.models.model_from_json(model_json)
                 model.load_weights(filepath=weights_path)
@@ -117,12 +118,20 @@ class PhaseRegressionModel:
                 def normalize(x):
                     return tf.divide(tf.subtract(x, tf.reduce_min(x)), tf.subtract(tf.reduce_max(x), tf.reduce_min(x)))
 
-                self.segmentation_layer = keras.layers.Lambda(lambda x: K.stack(
-                    [segmentation_model(normalize(x))]
-                    , axis=1))
-            # End use_segmentation --------------------------------------------------------------->
+                if self.CMR3D:
+                    self.segmentation_layer = keras.layers.Lambda(lambda x: K.stack(
+                        [segmentation_model(normalize(x))]
+                        , axis=1))
+                else:
+                    self.segmentation_layer = keras.layers.Lambda(lambda x: tf.stack(
+                        [segmentation_model(z_slice) for z_slice in tf.unstack(normalize(x), axis=1)]
+                        , axis=1))
+            # End segmentation --------------------------------------------------------------->
 
-            self.gap = tensorflow.keras.layers.GlobalAveragePooling2D(name='GAP_2D_Layer')
+            if self.CMR3D:
+                self.gap = tensorflow.keras.layers.GlobalAveragePooling3D(name='GAP_3D_Layer')
+            else:
+                self.gap = tensorflow.keras.layers.GlobalAveragePooling2D(name='GAP_2D_Layer')
             # concat the current frame with the previous on the last channel
             self.roll_concat_lambda_layer = keras.layers.Lambda(lambda x:
                                                                 keras.layers.Concatenate(axis=-1,
@@ -255,7 +264,7 @@ class PhaseRegressionModel:
             features_given = False
 
             if self.PRETRAINED_SEG:
-                segmentation = TimeDistributed(self.segmentation_layer, name='use_segmentation')(self.input_tensor[..., 0])
+                segmentation = TimeDistributed(self.segmentation_layer, name='segmentation')(self.input_tensor[..., 0])
                 print(f'Segmentation shape: {segmentation.shape}')
 
             if (self.add_vect_norm and self.add_flows):  # use the magnitude and flow
@@ -283,7 +292,7 @@ class PhaseRegressionModel:
                     features_given = True
                 print('flow features inkl directions shape: {}'.format(flow_features.shape))
 
-            # Apply an Bidirectional convLstm layer before downsampling
+            # Apply a Bidirectional convLstm layer before downsampling
             # transpose t and z
             if self.add_conv_bilstm:
                 flow_features = tf.transpose(flow_features, perm=[0, 2, 1, 3, 4, 5])

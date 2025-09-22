@@ -166,7 +166,9 @@ def init_config(config, save=True):
     return config
 
 
-def init_json(json_data, file_path):
+def init_json(json_data, file_path=None):
+    if file_path is None:
+        return json_data
     os.makedirs(os.path.dirname(file_path), exist_ok=True)
     json_file = os.path.join(file_path, 'dataset.json')
     with open(json_file, 'w') as json_file_path:
@@ -187,9 +189,10 @@ def get_json(search_pattern, file_path):
     return files
 
 
-def get_post_processing(json_file):
-    with open(json_file) as json_file:
-        json_data = json.load(json_file)
+def get_post_processing(json_data):
+    if type(json_data) == str:
+        with open(json_data) as json_file:
+            json_data = json.load(json_file)
     ret = json_data["post_processing"]
     if ret["use_segmentation"]:
         if not ret["mask_channels"]:
@@ -202,103 +205,6 @@ def get_post_processing(json_file):
 
 
 
-def write_random_example_4d_files_to_disk(PRETRAINED_SEG, config, example_path, moved, number_of_examples, segmentation,
-                                          vects, x_val_lax, norm_thresh=55, connected_component_filter=None, mask_channels=None):
-
-    if number_of_examples == None:
-        number_of_examples = vects.shape[0] - 1  # export all patients
-    else:
-        number_of_examples = 1
-    np.random.seed(42)
-    examples = np.random.choice(np.array(range(vects.shape[0])), size=number_of_examples, replace=False)
-    logging.info('Saving example patients with direction as nrrd')
-
-    # order of moved axis is wrong, so rearrange them:
-    moved = np.transpose(moved, (0, 1, 4, 2, 3))
-    focus_size = round(moved.shape[-1] / 96)  # Setting size of focus point in depending on the size of the image
-
-    write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
-                           vects, x_val_lax, norm_thresh=norm_thresh, connected_component_filter=connected_component_filter, mask_channels=mask_channels)
-
-
-def write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
-                           vects, x_val_lax, norm_thresh=55, connected_component_filter=None, mask_channels=None):
-    import SimpleITK as sitk
-    import os
-    from src.models.predict_phase_reg_model import interpret_deformable
-
-    for example in examples:
-        dir_1d_mean, directions, norm_1d_mean, norm_nda, ct, _ = interpret_deformable(vects_nda=vects[example],
-                                                                                      masks=segmentation[
-                                                                                          example] if PRETRAINED_SEG else None,
-                                                                                      mask_channels=mask_channels
-                                                                                      if PRETRAINED_SEG else None,
-                                                                                      ct_calculation=[1, 2, 3],
-                                                                                      norm_percentile=norm_thresh,
-                                                                                      component_padding=
-                                                                                      connected_component_filter)
-
-        if np.ma.is_masked(directions):
-            directions[directions.mask] = -10
-            # directions = directions.data * ~directions.mask
-        if np.ma.is_masked(norm_nda):
-            norm_nda = norm_nda.data * ~norm_nda.mask
-
-        zeros = np.zeros_like(moved[example])
-        zeros[:, :,
-        int(ct[0] - focus_size):int(ct[0] + focus_size),
-        int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1
-
-        # Testen ob es auch direkt mit GetImageFromArray klappt, ohne for schleifen iteration
-        sitk_images = [sitk.GetImageFromArray(vol.astype('float32')) for vol in moved[example]]
-
-        sitk_vects = [sitk.GetImageFromArray(vol.astype('float32'), isVector=True) for vol in
-                      np.transpose(vects[example], (3, 1, 2, 0))]
-        sitk_dir = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(directions)]
-        sitk_norm = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(norm_nda)]
-        sitk_foc = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in zeros]
-
-        # Define spacing for saving the images
-        spacing = config.get('SPACING', (2.5, 2.5))
-        spacing = list(reversed(spacing)) + [1.0, 1.0]
-
-        elem = x_val_lax[example]
-        file_type = '.nrrd' if '.nrrd' in elem else '.nii.gz'
-
-        # Save image, vector, direction, norm and focus point each as nrrd/NIFTI
-        export_img_f_name = os.path.join(example_path, os.path.basename(elem))
-        save_sitk(sitk_images, spacing, export_img_f_name)
-
-        export_vec_f_name = os.path.join(example_path,
-                                         os.path.basename(elem).replace(file_type, '_vec.nrrd'))
-        save_sitk(sitk_vects, spacing, export_vec_f_name)
-
-        export_dir_f_name = os.path.join(example_path,
-                                         os.path.basename(elem).replace(file_type, '_dir.nrrd'))
-        save_sitk(sitk_dir, spacing, export_dir_f_name)
-
-        export_norm_f_name = os.path.join(example_path,
-                                          os.path.basename(elem).replace(file_type, '_norm.nrrd'))
-        save_sitk(sitk_norm, spacing, export_norm_f_name)
-
-        export_foc_f_name = os.path.join(example_path,
-                                         os.path.basename(elem).replace(file_type, '_foc.nrrd'))
-        save_sitk(sitk_foc, spacing, export_foc_f_name)
-
-        if PRETRAINED_SEG:
-            from src.models.predict_phase_reg_model import seg_based_direction
-            sitk_mask = [sitk.GetImageFromArray(np.flipud(vol.astype(np.uint8))) for vol in np.transpose(segmentation[example], (0, 3, 1, 2))]
-            new_mask_clean = sitk.JoinSeries(sitk_mask)
-            new_mask_clean.SetSpacing(spacing)
-            export_mask_f_name = os.path.join(example_path,
-                                              os.path.basename(elem).replace(file_type, '_mask.nrrd'))
-            sitk.WriteImage(new_mask_clean, export_mask_f_name)
-            seg_based_direction(vects[example], moved[example], segmentation[example], x_val_lax[example],
-                                focus_size, example_path, config, file_type)
-
-    return
-
-
 def save_sitk(sitk_img, spacing, export_f_name):
     """
     Save a sitk image to disk.
@@ -308,7 +214,6 @@ def save_sitk(sitk_img, spacing, export_f_name):
     new_img_clean.SetSpacing(spacing)
     sitk.WriteImage(new_img_clean, export_f_name)
     return new_img_clean
-
 
 def rearrange_axis_of_ndarray(array, order=(1, 0, 2, 3), additional_row=True):
     """
@@ -323,3 +228,100 @@ def rearrange_axis_of_ndarray(array, order=(1, 0, 2, 3), additional_row=True):
     array = np.transpose(array, order)
     return array
 
+
+
+# Add z in the method as parameter and gtind!
+def plot_direction_instance(dir_1d_mean, directions, exp_path, mid, norm_1d_mean, norm_nda, patient, save, upper):
+    from matplotlib.ticker import FormatStrFormatter
+    import matplotlib.pyplot as plt
+    from src.visualization.Visualize import show_2D_or_3D
+    from src.models.KerasLayers import minmax_lambda
+    # with sb.plotting_context("paper"):
+    plt.rcParams['font.size'] = '16'
+    timesteps = directions.shape[0]
+    size_per_timestep = (25 / timesteps) * 2  # use a relative hight, to scope with the square mid-cavity plots
+    figsize = (25, size_per_timestep)
+    fig = plt.figure(figsize=figsize)
+    # DIR 2D+t
+    dir_2d_t = directions.copy()  # SKM Combine: here it is for SAX .copy()[:,z]
+    if np.ma.is_masked(directions): dir_2d_t = dir_2d_t.data * ~directions.mask
+    div_cmap = 'bwr'
+    fig = show_2D_or_3D(dir_2d_t, allow_slicing=False, cmap=div_cmap, fig=fig, interpolation=None, vmin=-1, vmax=1)
+    ax_ = fig.get_axes()[0]
+    _ = ax_.set_yticks([])
+    _ = ax_.set_xticks([])
+    ax = fig.get_axes()[1]
+    _ = ax.set_ylabel(r'$\alpha$ ' + '\n2d+t')  # \nmid
+    _ = ax.set_yticks([])
+    _ = ax.set_xticks([])
+    cax = fig.add_axes([0.45, 0.84, 0.1, 0.03])
+    cb = fig.colorbar(ax.get_images()[len(ax.get_images()) // 2], cax=cax, orientation='horizontal')
+    cb.ax.tick_params(color="black", labelsize=10, labelcolor='black')
+    rows = 2
+    pos = 2
+    ax = fig.add_subplot(rows, 1, pos)
+    # DIR 2D T x Z
+    # SKM Combine: SAX has this definitions.... necessary?
+    # directions_tz = np.ma.mean(directions,axis=(2, 3))
+    # _ = ax.imshow(directions_tz.T, aspect='auto', cmap=div_cmap, vmin=directions_tz.min(), vmax=directions_tz.max(),
+    #               origin='lower', interpolation='none')
+    # _ = ax.set_xticks(gtind, minor=False)
+    ax2 = ax.twinx()
+    # DIR 1D
+    # SKM Combine: SAX has this definitions.... necessary?
+    # current_z = directions.shape[1] // 2
+    # dir_1d_mean_apex = np.ma.mean(directions_tz[:, :current_z], axis=1)
+    # dir_1d_mean_base = np.ma.mean(directions_tz[:, current_z:], axis=1)
+    _ = ax2.plot(dir_1d_mean, c='black', label=r'$\alpha_{ap_t}$')
+    # SKM Combine: SAX has this definitions.... necessary?, makes plot per base and apex
+    # _ = ax2.plot(dir_1d_mean_apex, c='green', label=r'$\alpha_{ap_t}$')
+    # _ = ax2.plot(dir_1d_mean_base, c='black', label=r'$\alpha_{ba_t}$')
+    _ = ax.set_yticks([])
+    _ = ax.set_ylabel(r'$\alpha$' + '\nz+t')  # \nap:ba
+    ax2.label_outer()
+    _ = ax2.tick_params(axis="y", pad=-40)
+    ax2.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+    ax2.axhline(0, color='red', linestyle='--', label='Zero Line')
+    ax2.axhline(0, color='grey', linestyle='--', label='Zero Line')
+    if save: fig.savefig(os.path.join(exp_path, '{}_alpha.svg'.format(patient)))
+    norm_cmap = 'hot'
+    # NORM 2D + t
+    fig = plt.figure(figsize=figsize)
+    norm_2d_t = norm_nda  # SKM Combine: Here also norm_nda[:, z]
+    norm_2d_t = minmax_lambda([norm_2d_t, mid, upper])
+    fig = show_2D_or_3D(norm_2d_t, allow_slicing=False, cmap=norm_cmap, interpolation='none',
+                        fig=fig)
+    ax = fig.get_axes()[0]
+    _ = ax.set_yticks([])
+    _ = ax.set_xticks([])
+    ax = fig.get_axes()[1]
+    _ = ax.set_ylabel(r'$|\vec{v}|$' + '\n2d+t')  # \nmid
+    _ = ax.set_yticks([])
+    _ = ax.set_xticks([])
+    cax = fig.add_axes([0.45, 0.84, 0.1, 0.03])
+    cb = fig.colorbar(ax.get_images()[len(ax.get_images()) // 2], cax=cax, orientation='horizontal')
+    # cb.set_ticks([])
+    cb.ax.tick_params(color="white", labelsize=10, labelcolor='white')
+    rows = 2
+    pos = 2
+    ax = fig.add_subplot(rows, 1, pos)
+    # SKM Combine: Also this is listed for Sax
+    # # NORM 2D TxZ
+    # norm2d = minmax_lambda([norm_nda.mean(axis=(2, 3)), mid, upper])
+    # _ = ax.imshow(norm2d.T, aspect='auto', origin='lower', cmap=norm_cmap, interpolation='none')
+    # _ = ax.set_xticks(gtind, minor=False)
+    # _ = ax.set_yticks([])
+    # _ = ax.set_ylabel(r'$|\vec{v}|$' + '\nz+t')  # \nap:ba
+    ax2 = ax.twinx()
+    _ = ax2.plot(minmax_lambda([norm_1d_mean, mid, upper]), c='black', label=r'$|\vec{v}_{t}|$')
+    # SKM Combine: SAX line:
+    # ax2.text(len(norm_1d_mean) / 2, norm_1d_mean[len(norm_1d_mean) // 2] - 0.2, r'$|\vec{v}_{t}|$', color='black')
+    _ = ax2.tick_params(axis="y", pad=-20)
+    ax2.yaxis.set_major_formatter(FormatStrFormatter('%.1f'))
+    if save:
+        try:
+            fig.savefig(os.path.join(exp_path, '{}_norm.svg'.format(patient)))
+        except Exception as e:
+            print(e)
+            fig.savefig(os.path.join(exp_path, '{}_norm.png'.format(patient)))
+    return fig

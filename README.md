@@ -45,13 +45,21 @@ analysis of cardiac dynamics, irrespective of cycle or phase lengths.
 
 How to get started?
 ------------
-- <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Setup.md">Setup</a>
-- <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Data.md">Data</a>
+1. **Environment setup**
 
-#### Training
+    Follow the <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Setup.md">Setup Guide</a> to install dependencies and configure your environment.
+
+2. **Data Preparation** 
+
+    See the <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Data.md">Data Guide</a> for instructions on how to structure your dataset.
+
+3. **Run Training and Inference
+
+    - You can start directly from the example notebooks in the ``notebooks`` folder
+    - Alternatively, you can run the scripts from your preferred IDE or command line.
+
+Follow the links below for more details on:
 - <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Training.md">Training</a>
-
-#### Inference
 - <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Keyframe-detection.md">Keyframe detection</a>
 - <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Phase2Phase-LAS.md">Phase to phase LAS computing</a>
 
