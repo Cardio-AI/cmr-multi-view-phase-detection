@@ -105,7 +105,7 @@ Project Organization
 
 Paper:
 --------
-Please cite the following paper (accepted for the @ FIMH2025) if you use/modify or adapt parts of this repository:
+Please cite the following paper if you use/modify or adapt parts of this repository:
 
 **Bibtext**
 ```
