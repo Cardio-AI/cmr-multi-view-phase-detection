@@ -9,7 +9,7 @@ This repository was used for the following paper:
 **Deformable Image Registration for Self-supervised Cardiac Phase Detection in Multi-View Multi-Disease Cardiac Magnetic Resonance Images**
 
 For a more detailed description, a model definition and further results we refer to our 
-<a target="_blank" href="https://link.springer.com/chapter/10.1007/978-3-031-94562-5_11">paper</a>.
+<a target="_blank" href="https://arxiv.org/abs/2510.05819">paper</a>.
 
 
 
