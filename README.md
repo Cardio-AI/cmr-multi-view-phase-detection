@@ -109,34 +109,16 @@ Please cite the following paper (accepted for the @ FIMH2025) if you use/modify 
 
 **Bibtext**
 ```
-@InProceedings{10.1007/978-3-031-94562-5_11,
-  author="Mueller, Sarah Kaye
-  and Jonathan Kiekenap
-  and Koehler, Sven
-  and Andre, Florian
-  and Frey, Norbert
-  and Greil, Gerald
-  and Hussain, Tarique
-  and Wolf, Ivo
-  and Engelhardt, Sandy",
+@misc{koehler_mueller_2025-2510.05819,
+    author={Sven Koehler and Sarah Kaye Mueller, Jonathan Kiekenap, Gerald Greil, Tarique Hussain, Samir Sarikouch, Florian André, Norbert Frey, Sandy Engelhardt},
 
-  editor="Chaniniok, Radek
-  and Zou, Q.
-  and Hussain, T.
-  and Nguyen, H.H.,
-  and Zaha, V.G.
-  and Gusseva, M.",
-
-  title="SAn Automatic Self-supervised Phase-Based Approach to Aligned Long-Axis Strain Measurements in Four Chamber Cardiovascular Magnetic Resonance Imaging",
-  booktitle="Functional Imaging and Modeling of the Heart. FIMH 2025. Lecture Notes in Computer Science",
+  title="Deformable Image Registration for Self-supervised Cardiac Phase Detection in Multi-View Multi-Disease Cardiac Magnetic Resonance Images",
   year="2025",
-  publisher="Springer",
-  address="Cham",
-  pages="113--125",
-  abstract="Cardiovascular Magnetic Resonance Imaging (cardiac MRI) is the gold standard for quantifying ventricular function, from which several parameters are derived. Among these, long-axis strain (LAS) is valuable for diagnosis of cardiovascular diseases. Unlike global longitudinal strain (GLS), which needs multi-plane imaging, LAS can be effectively derived from a single-plane four-chamber long-axis (4CH) cardiac MRI. Conventional analysis focuses on end-diastolic (ED) to end-systolic (ES) LAS, overlooking intermediate dynamics that could help distinguish diseases.
-In this study, we present a novel framework for estimating left ventricular LAS across five cardiac phases. The proposed method combines a self-supervised deformable image registration model for key frame detection with a supervised segmentation for landmark identification. LAS is calculated between ED and intermediate phases K (ED2K) and between consecutive phases (K2K).
-The methodology was developed and validated on the publicly available M&M2 dataset. The evaluation demonstrated significant differences between healthy individuals and patients with four of the seven cardiac diseases investigated not only in ED2ES, but also mid-systole to ES and ES to peak-flow. This emphasizes the diagnostic potential of phase-specific LAS analysis. The method is fully automated and fast, underscoring its potential for clinical application. The code and reference annotations will be made publicly available. .",
-  isbn="978-3-031-94561-8"
+  eprint={2510.05819},
+  archivePrefix={arXiv},
+  primaryClass={cs.CV},
+  url={https://arxiv.org/abs/2510.05819}, 
+  abstract="Cardiovascular magnetic resonance (CMR) is the gold standard for assessing cardiac function, but individual cardiac cycles complicate automatic temporal comparison or sub-phase analysis. Accurate cardiac keyframe detection can eliminate this problem. However, automatic methods solely derive end-systole (ES) and end-diastole (ED) frames from left ventricular volume curves, which do not provide a deeper insight into myocardial motion. We propose a self-supervised deep learning method detecting five keyframes in short-axis (SAX) and four-chamber long-axis (4CH) cine CMR. Initially, dense deformable registration fields are derived from the images and used to compute a 1D motion descriptor, which provides valuable insights into global cardiac contraction and relaxation patterns. From these characteristic curves, keyframes are determined using a simple set of rules. The method was independently evaluated for both views using three public, multicentre, multidisease datasets. M&Ms-2 (n=360) dataset was used for training and evaluation, and M&Ms (n=345) and ACDC (n=100) datasets for repeatability control. Furthermore, generalisability to patients with rare congenital heart defects was tested using the German Competence Network (GCN) dataset. Our self-supervised approach achieved improved detection accuracy by 30% - 51% for SAX and 11% - 47% for 4CH in ED and ES, as measured by cyclic frame difference (cFD), compared with the volume-based approach. We can detect ED and ES, as well as three additional keyframes throughout the cardiac cycle with a mean cFD below 1.31 frames for SAX and 1.73 for LAX. Our approach enables temporally aligned inter- and intra-patient analysis of cardiac dynamics, irrespective of cycle or phase lengths."
 ```
 
 
