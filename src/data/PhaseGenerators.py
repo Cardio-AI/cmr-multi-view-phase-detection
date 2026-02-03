@@ -515,6 +515,11 @@ class PhaseRegressionGenerator_v2(DataGenerator):
         # transform to nda for further processing
         model_inputs = np.stack(list(map(lambda x: sitk.GetArrayFromImage(x), model_inputs)), axis=0)
 
+        # flip base/apex for ACDC
+        if 'acdc' in x:
+            # before: axis 1 == z-axis: base --> apex, after:  apex--> base
+            model_inputs = np.flip(model_inputs, axis=1)
+
         # How many times do we need to repeat that cycle along t to cover the desired output size
         reps = 1
         if self.REPEAT: reps = int(np.ceil(self.T_SHAPE / gt_length))

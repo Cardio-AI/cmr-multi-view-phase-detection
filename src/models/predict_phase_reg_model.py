@@ -5,8 +5,8 @@ import numpy as np
 
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor
 from typing import List, Union, Literal
+
 from scipy.ndimage import gaussian_filter1d
-from src.utils.Utils_io import get_post_processing
 
 
 DEBUG = False
@@ -1191,6 +1191,7 @@ class CMRViewMasker:
 if __name__ == "__main__":
     import argparse, os, sys
     from src.utils.Utils_io import get_json
+    from src.utils.Utils_io import get_post_processing
 
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 

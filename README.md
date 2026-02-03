@@ -53,7 +53,7 @@ How to get started?
 
     See the <a target="_blank" href="https://github.com/Cardio-AI/cmr-multi-view-phase-detection/tree/main/docs/Data.md">Data Guide</a> for instructions on how to structure your dataset.
 
-3. **Run Training and Inference
+3. **Run Training and Inference**
 
     - You can start directly from the example notebooks in the ``notebooks`` folder
     - Alternatively, you can run the scripts from your preferred IDE or command line.

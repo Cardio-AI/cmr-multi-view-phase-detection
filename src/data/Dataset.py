@@ -102,6 +102,8 @@ def get_patient(filename_to_2d_nrrd_file):
         return os.path.basename(filename_to_2d_nrrd_file).split('__')[0]
     if os.path.basename(filename_to_2d_nrrd_file).startswith('patient'): # acdc file
         return os.path.basename(filename_to_2d_nrrd_file).split('_')[0]
+    if any( elem in filename_to_2d_nrrd_file for elem in ['acdc', 'mnms', 'gcn']):
+       return os.path.basename(filename_to_2d_nrrd_file).split('.')[0]
     else: # gcn filename
         return '_'.join(os.path.basename(filename_to_2d_nrrd_file).split('_')[:2])
 
@@ -280,7 +282,7 @@ def get_phases_as_onehot(file_path, df, start_id=0, temporal_sampling_factor=1, 
     # Returns the indices in the following order: 'ED#', 'MS#', 'ES#', 'PF#', 'MD#'
     # Reduce the indices of the Excel sheet by start_id, as the indexes start at 0, the excel-sheet may start at 1
     # Transform them into a one-hot representation
-    indices = df[df.patient.str.contains(patient_str)][
+    indices = df[df.patient.str.contains(patient_str, na=False)][
         ['ed#', 'ms#', 'es#', 'pf#', 'md#']]
     indices = indices.values[0].astype(int) - start_id
 
