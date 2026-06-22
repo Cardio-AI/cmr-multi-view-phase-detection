@@ -6,10 +6,10 @@ cardiac magnetic resonance (CMR) cine images.
 
 This repository was used for the following paper:
 
-**Deformable Image Registration for Self-supervised Cardiac Phase Detection in Multi-View Multi-Disease Cardiac Magnetic Resonance Images**
+**Deformable image registration for self-supervised cardiac phase detection in cardiac magnetic resonance images of patients with various diseases**
 
 For a more detailed description, a model definition and further results we refer to our 
-<a target="_blank" href="https://arxiv.org/abs/2510.05819">paper</a>.
+<a target="_blank" href="https://www.sciencedirect.com/science/article/pii/S1361841526002112?via%3Dihub">paper</a>.
 
 
 
@@ -22,26 +22,12 @@ Motivation
 
 Abstract
 =
-Cardiovascular magnetic resonance (CMR) is the gold standard for assessing cardiac function, but individual cardiac
-cycles complicate automatic temporal comparison or sub-phase analysis. Accurate cardiac keyframe detection 
-can eliminate this problem. However, automatic methods solely derive end-systole (ES) and end-diastole (ED) 
-frames from left ventricular volume curves, which do not provide a deeper insight into myocardial motion.
+Cardiovascular magnetic resonance (CMR) is widely used to assess cardiac function, but individual cardiac cycles complicate automatic temporal comparison and sub-phase analysis. Accurate cardiac keyframe detection can eliminate this problem. However, automatic methods solely derive end-systole (ES) and end-diastole (ED) frames from left ventricular volume curves, which do not provide a deeper insight into myocardial motion.
 
-We propose a self-supervised deep learning method detecting five keyframes in short-axis (SAX) and four-chamber 
-long-axis (4CH) cine CMR. Initially, dense deformable registration fields are derived from the images and used 
-to compute a 1D motion descriptor, which provides valuable insights into global cardiac contraction and 
-relaxation patterns. From these characteristic curves, keyframes are determined using a simple set of rules.
+We propose a self-supervised deep learning method detecting five keyframes in short-axis (SAX) and four-chamber (4CH) cine CMR. Initially, dense deformable registration fields are derived from CMR to compute a 1D motion descriptor encoding global cardiac contraction and relaxation patterns. Keyframes are derived from these characteristic curves with a set of rules.
+The method was independently evaluated for both views using four databases encompassing multiple centre, vendor and disease. M&Ms-2 (n=360) was used for training and evaluation; M&Ms (n=345) and ACDC (n=100) for repeatability control. Generalisability to patients with rare congenital heart defects was tested using the German Competence Network (GCN) database. A disease-stratified analysis confirmed stable performance across cardiomyopathies and congenital abnormalities.
 
-The method was independently evaluated for both views using three public, multicentre, multidisease datasets. 
-M&Ms-2 (n=360) dataset was used for training and evaluation, and M&Ms (n=345) and ACDC (n=100) datasets for 
-repeatability control. Furthermore, generalisability to patients with rare congenital heart defects was tested 
-using the German Competence Network (GCN) dataset.
-
-Our self-supervised approach achieved improved detection accuracy by 30\% - 51\% for SAX and 11\% - 47\% for 4CH  
-in ED and ES, as measured by cyclic frame difference (cFD), compared with the volume-based approach.  
-We can detect ED and ES, as well as three additional keyframes throughout the cardiac cycle with a mean cFD 
-below 1.31 frames for SAX and 1.73 for LAX. Our approach enables temporally aligned inter- and intra-patient 
-analysis of cardiac dynamics, irrespective of cycle or phase lengths.
+Our method improved detection accuracy by 49%/59% for SAX and 31%/39% for 4CH in ED/ES over the volume-based approach, with mean cyclic frame difference (cFD) below 1.3 and 1.2 frames for SAX and 4CH respectively. Our framework enables temporally aligned inter- and intra-patient analysis of cardiac dynamics, irrespective of cycle or phase lengths for aligned strain analysis or temporal normalisation. 
 
 How to get started?
 ------------
@@ -109,16 +95,19 @@ Please cite the following paper if you use/modify or adapt parts of this reposit
 
 **Bibtext**
 ```
-@misc{koehler_mueller_2025-2510.05819,
-    author={Sven Koehler and Sarah Kaye Mueller, Jonathan Kiekenap, Gerald Greil, Tarique Hussain, Samir Sarikouch, Florian André, Norbert Frey, Sandy Engelhardt},
+@article{MUELLER_KOEHLER_2026104142,
+title = {Deformable image registration for self-supervised cardiac phase detection in cardiac magnetic resonance images of patients with various diseases},
+journal = {Medical Image Analysis},
+pages = {104142},
+year = {2026},
+issn = {1361-8415},
+doi = {https://doi.org/10.1016/j.media.2026.104142},
+url = {https://www.sciencedirect.com/science/article/pii/S1361841526002112},
+author = {Sarah Kaye Mueller and Sven Koehler and Jonathan Kiekenap and Gerald Greil and Tarique Hussain and Samir Sarikouch and Florian Andre and Norbert Frey and Sandy Engelhardt},
+keywords = {Cardiac phase detection, Cardiac motion description, Cardiac magnetic resonance imaging, Self-supervised learning, Discrete vector fields},
+abstract = {Cardiovascular magnetic resonance (CMR) is widely used to assess cardiac function, but individual cardiac cycles complicate automatic temporal comparison and sub-phase analysis. Accurate cardiac keyframe detection can eliminate this problem. However, automatic methods solely derive end-systole (ES) and end-diastole (ED) frames from left ventricular volume curves, which do not provide a deeper insight into myocardial motion. We propose a self-supervised deep learning method detecting five keyframes in short-axis (SAX) and four-chamber (4CH) cine CMR. Initially, dense deformable registration fields are derived from CMR to compute a 1D motion descriptor encoding global cardiac contraction and relaxation patterns. Keyframes are derived from these characteristic curves with a set of rules. The method was independently evaluated for both views using four databases encompassing multiple centre, vendor and disease. M&Ms-2 (n=360) was used for training and evaluation; M&Ms (n=345) and ACDC (n=100) for repeatability control. Generalisability to patients with rare congenital heart defects was tested using the German Competence Network (GCN) database. A disease-stratified analysis confirmed stable performance across cardiomyopathies and congenital abnormalities. Our method improved detection accuracy by 49%/59% for SAX and 31%/39% for 4CH in ED/ES over the volume-based approach, with mean cyclic frame difference (cFD) below 1.3 and 1.2 frames for SAX and 4CH respectively. Our framework enables temporally aligned inter- and intra-patient analysis of cardiac dynamics, irrespective of cycle or phase lengths for aligned strain analysis or temporal normalisation. Code and annotations are available at: https://github.com/Cardio-AI/cmr-multi-view-phase-detection.git.}
+}
 
-  title="Deformable Image Registration for Self-supervised Cardiac Phase Detection in Multi-View Multi-Disease Cardiac Magnetic Resonance Images",
-  year="2025",
-  eprint={2510.05819},
-  archivePrefix={arXiv},
-  primaryClass={cs.CV},
-  url={https://arxiv.org/abs/2510.05819}, 
-  abstract="Cardiovascular magnetic resonance (CMR) is the gold standard for assessing cardiac function, but individual cardiac cycles complicate automatic temporal comparison or sub-phase analysis. Accurate cardiac keyframe detection can eliminate this problem. However, automatic methods solely derive end-systole (ES) and end-diastole (ED) frames from left ventricular volume curves, which do not provide a deeper insight into myocardial motion. We propose a self-supervised deep learning method detecting five keyframes in short-axis (SAX) and four-chamber long-axis (4CH) cine CMR. Initially, dense deformable registration fields are derived from the images and used to compute a 1D motion descriptor, which provides valuable insights into global cardiac contraction and relaxation patterns. From these characteristic curves, keyframes are determined using a simple set of rules. The method was independently evaluated for both views using three public, multicentre, multidisease datasets. M&Ms-2 (n=360) dataset was used for training and evaluation, and M&Ms (n=345) and ACDC (n=100) datasets for repeatability control. Furthermore, generalisability to patients with rare congenital heart defects was tested using the German Competence Network (GCN) dataset. Our self-supervised approach achieved improved detection accuracy by 30% - 51% for SAX and 11% - 47% for 4CH in ED and ES, as measured by cyclic frame difference (cFD), compared with the volume-based approach. We can detect ED and ES, as well as three additional keyframes throughout the cardiac cycle with a mean cFD below 1.31 frames for SAX and 1.73 for LAX. Our approach enables temporally aligned inter- and intra-patient analysis of cardiac dynamics, irrespective of cycle or phase lengths."
 ```
 
 
