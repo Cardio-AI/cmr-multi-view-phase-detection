@@ -15,7 +15,7 @@ cd %reponame%
 ```
 - Create a conda environment from enrionment.yaml (environment name will be cmr-las)
 ```
-conda env create --file environment.yml
+conda env create --file environment.yaml
 ```
 - Activate environment
 ```
