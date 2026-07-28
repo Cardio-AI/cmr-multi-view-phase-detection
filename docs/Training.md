@@ -3,9 +3,6 @@ Training
 For self-supervised deformable image registration and keyframe detection, you only need to train:
 - **Deformable image registration model** (self-supervised, no groundtruth annotations necessary)
 
-For semi-supervised keyframe detection and motion field filtering by anatomical mask, you can additionally train:
-- **Segmentation model** for at least the left ventricle (we used bi-ventricular segmentation from <a target="_blank" href="https://www.ub.edu/mnms-2/">M&Ms-2</a>
-
 ## Deformable image registration model
 Our trainings script supports single- and multi-GPU training (local or  cluster). 
 You can either run the training  using the jupyter notebook in ```notebooks/Train/Train_cv.ipynb``` (recommended) or run the script from your command line or preferred IDE.
@@ -53,14 +50,3 @@ In the notebook you will create the additional files necessary for training:
    ├── model_summary.txt (layer input/output shapes as structured txt file
    └── tensorboard_logs (tensorboard logfiles: train-/test scalars and model predictions per epoch)
    ```
-   
-### Segmentation model
-For segmentation, we used the publicly available <a target="_blank" href="https://github.com/MIC-DKFZ/nnUNet"> nnU-Net </a>  framework. 
-Please use 2D 4CH cine CMR images for the training of the model. 
-
-Note: nnU-Net does not support time sequences. Our pipeline processes each timestep independently and assembles cine masks.
-
-Segmentation labels:
-- LV bloodpool: 1
-- LV MYO (with septum): 2
-- RV bloodpool: 3
