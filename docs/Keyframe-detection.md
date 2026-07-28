@@ -4,7 +4,11 @@ Keyframe detection
 Usually the inference/evaluation scripts are executed automatically per fold when running ```train_regression_model.py```. 
 Nevertheless, you can also run predictions manually on new datasets or groundtruth or with modified experiment parameters.
 
-### Run Prediction script
+## Run Jupyter Notebook for prediction
+
+Run the ```notebooks/Predict/predict_registration.ipynb``` for predictions.
+
+## Run Prediction script
 
  ```
     python src/models/predict_phase_reg_model.py \
