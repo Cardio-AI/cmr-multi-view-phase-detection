@@ -44,3 +44,10 @@ jupyter labextension install @jupyter-widgets/jupyterlab-manager
 Further infos on how to enable the jupyterlab-extensions:
 
 <a target="_blank" href="https://ipywidgets.readthedocs.io/en/latest/user_install.html#installing-the-jupyterlab-extension">JupyterLab</a>
+
+
+### Troubleshooting
+If Jupyter lab does not work, update components:
+```
+python -m pip install --upgrade notebook jupyterlab jupyter_server traitlets
+```
