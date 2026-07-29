@@ -213,7 +213,7 @@ def get_post_processing(json_data):
             json_data = json.load(json_file)
     ret = json_data["post_processing"]
     if ret["use_segmentation"]:
-        if not ret["mask_channels"]:
+        if not ret.get("mask_channels"):
             ret["mask_channels"] = [
                 label_id for label, label_id in json_data["labels"].items() if label != "background"
             ]

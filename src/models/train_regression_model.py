@@ -261,7 +261,7 @@ def main(args=None, in_memory=False, seg_exp_path=None):
         exp_path_ = cfg['EXP_PATH']
         data_json_path = cfg["CONFIG_PATH"] + "data_json.json"
         cmr_phase_predictor = CMRPhaseDetector(model_config=cfg, data_info_path=data_json_path, exp_path= exp_path_, data_root=config['DATA_PATH_' + CMR_view])
-        cmr_phase_predictor.predict_phase_from_deformable(config.get('EXP_PATH'),
+        cmr_phase_predictor.predict_phase_from_deformable(
                                       dir_axis=0,
                                       roll_by_gt=False,
                                       ct_calculation=None

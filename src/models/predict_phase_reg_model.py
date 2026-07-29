@@ -51,10 +51,7 @@ class CMRPhaseDetector:
         # Read in used view to define future processing of 3D+t (SAX) or 2D+t (LAX, 4CH, 3CH, 2CH)
         # Done? SKM combine: Add flag/information if it is lax or sax to decide here
         self.view = self.dataset_json['view']
-        if self.view == "SAX":
-            self.CMR3D = True
-        else:
-            self.CMR3D = False
+        self.CMR3D = self.view.lower() == "sax"
 
 
         # ------------------------------------------define GPU id/s to use
@@ -136,6 +133,7 @@ class CMRPhaseDetector:
         val_config['BATCHSIZE'] = 1
         val_config['HIST_MATCHING'] = False
         val_config['GPUS'] = ['/gpu:0']
+        val_config['CMR3D'] = self.CMR3D
         model = PhaseRegressionModel(val_config).get_model()
         logging.info('Trying to load the model weights')
         logging.info('work dir: {}'.format(os.getcwd()))
@@ -217,10 +215,10 @@ class CMRPhaseDetector:
         logging.info('saved as: \n{}\n{} \n example patients processed!'.format(pred_filename, patients_filename))
 
 
-    def predict_phase_from_deformable(self, create_figures=True,   norm_thresh=50, dir_axis=0, roll_by_gt=True,
+    def predict_phase_from_deformable(self, create_figures=True, dir_axis=0, roll_by_gt=True,
                                   normalise_dir=False, normalise_norm=False, return_files=False, mask_channels=None,
                                   ct_calculation='septum', save_dir_as_nrrd=False, max_junks=None,
-                                  connected_component_filter=None, exp_mode = None, diff_thresh=1.0):
+                                  norm_thresh=50, connected_component_filter=None, exp_mode=None, diff_thresh=1.0):
         """
         Predict the temporal occurence for five cardiac phases from a cmr-phase-regression experiment folder
         Expects to find all files written from a CV-experiment, e.g.> train_regression_model.py
@@ -235,6 +233,10 @@ class CMRPhaseDetector:
             ct_calculation (str): Can be None, if self-supervised, a list of int for mask channels or 'septum'
             save_dir_as_nrrd: save the prediction results as nrrd
             max_junks (int): max number of junks to use
+            norm_thresh (int): 0 < norm_thresh < 100, overrides the dataset json's post_processing.norm_threshold
+            connected_component_filter (int): padding size around the largest connected component, or None to disable
+            exp_mode (str): focus-point mode: None/'mse' balanced center, 'vol' volume center, 'septum'/'lv' anatomical
+            diff_thresh (float): minimal direction change (max-min) for a voxel to be included in the self-supervised mask
 
         Returns:
 
@@ -260,6 +262,8 @@ class CMRPhaseDetector:
         nda_vects, gt, pred, gt_len, mov, masks, patients = load_phase_reg_exp(self.config['EXP_PATH'], junk=max_junks)
         logging.info(f'vects_nda: {nda_vects.shape}')
 
+        if mask_channels is not None:
+            self.Masker.mask_channels = mask_channels
 
         if self.Masker.mask_channels is None and masks is not None:
             self.Masker.mask_channels = np.delete(np.unique(masks), 0, axis=0)
@@ -309,14 +313,23 @@ class CMRPhaseDetector:
 
         if DEBUG: print(pred_u.shape)
 
-        params = [nda_vects, gt_len, gt, dir_axis_list, indicies, f_names, cts]
-        # signature of interpret_deformable_async
-        # nda_vect, gt_len, gt, dir_axis, norm_thresh, idx, filename=None, ct_calculation='septum', masks=None, self.Masker.mask_channels=None
+        norm_thresh_list = [norm_thresh] * instances
+        connected_component_filter_list = [connected_component_filter] * instances
+        exp_mode_list = [exp_mode] * instances
+        diff_thresh_list = [diff_thresh] * instances
 
         if self.Masker.use_segmentation:
             # array has to be repeated for iterator used in multithreading
+            masks_multi = masks
             mask_channels_multi = [self.Masker.mask_channels] * instances
-            params.extend([masks, mask_channels_multi])
+        else:
+            masks_multi = [None] * instances
+            mask_channels_multi = [None] * instances
+
+        # positional order must match interpret_deformable_async's signature exactly, since
+        # executor.map(func, *iterables) zips these lists positionally
+        params = [nda_vects, gt_len, gt, dir_axis_list, indicies, f_names, cts, masks_multi, mask_channels_multi,
+                 norm_thresh_list, connected_component_filter_list, exp_mode_list, diff_thresh_list]
 
         for result in executor.map(self.interpret_deformable_async, *params):
             cardiac_cycle_length, dir_1d_mean, ind, indices, norm_1d_mean, weight, i, ct, mask = result
@@ -404,7 +417,7 @@ class CMRPhaseDetector:
 
 
     def get_directions(self, ct, dim_, length, vects_nda, diff_thresh=1.2, masked=False, dir_axis=0, as_angle=False,
-                       sigma=0.8):
+                       sigma=0.8, norm_thresh=None, connected_component_filter=None):
         """
         Create a focus matrix with the shape specified in dim_.
         In this matrix for each voxel we will have a focus vector pointing towards the center ct.
@@ -455,8 +468,9 @@ class CMRPhaseDetector:
         directions[:length] = directions_cut
         directions[length:] = dir_rest
         dir_mask = None
+        norm_thresh = self.Masker.norm_threshold if norm_thresh is None else norm_thresh
 
-        if not masked and self.Masker.norm_threshold != 0:  # additional filtering required
+        if not masked and norm_thresh != 0:  # additional filtering required
             # create mask by another constrain: we include only voxels with a direction change (max - min) greater than
             # smooth the direction field - especially at the cycle end
             # directions = scipy.ndimage.gaussian_filter(directions, sigma=0.8, mode='wrap')
@@ -473,20 +487,23 @@ class CMRPhaseDetector:
             structure = np.ones((3, 3))
             dir_mask = scipy.ndimage.binary_opening(dir_mask, structure=structure, iterations=1)
 
-        elif self.Masker.norm_threshold == 0:
+        elif norm_thresh == 0:
             dir_mask = np.zeros_like(directions_cut)
             dir_mask = dir_mask == 0
 
-        if self.Masker.connected_component_filter is not None and self.Masker.connected_component_filter != False:
+        connected_component_filter = self.Masker.connected_component_filter if connected_component_filter is None \
+            else connected_component_filter
+        if connected_component_filter is not None and connected_component_filter is not False:
             # SKM Combine: Check if connected component filter works for 2D and 3D
             # # (even though we didn't use it in the experiments, so remove if not working)
-            dir_mask = CMRViewMasker.filter_for_connected_components(dir_mask, pad_size=self.Masker.connected_component_filter)
+            dir_mask = CMRViewMasker.filter_for_connected_components(dir_mask, pad_size=connected_component_filter)
 
         return dir_mask, directions
 
     def interpret_deformable_async(self, nda_vect, gt_len, gt, dir_axis,  idx, filename=None,
                                    ct_calculation: Union[Literal['septum'], list, int, None] = 'septum',
-                                   masks=None, mask_channels=None, ):
+                                   masks=None, mask_channels=None, norm_thresh=None,
+                                   connected_component_filter=None, experiment_mode=None, diff_thresh=1.2):
         import numpy as np
         weight = 1
         cardiac_cycle_length = int(gt_len[:, 0].sum())
@@ -502,7 +519,11 @@ class CMRPhaseDetector:
             filename=filename,
             masks=masks,
             mask_channels=mask_channels,
-            ct_calculation=ct_calculation)
+            ct_calculation=ct_calculation,
+            norm_thresh=norm_thresh,
+            connected_component_filter=connected_component_filter,
+            experiment=experiment_mode,
+            diff_thresh=diff_thresh)
 
         from src.utils.detect_phases_from_dir import detect_phases
         indices = detect_phases(dir_1d_mean=dir_1d_mean[:cardiac_cycle_length])
@@ -511,7 +532,8 @@ class CMRPhaseDetector:
 
     def interpret_deformable(self, vects_nda, masks=None, mask_channels=None, dir_axis=0, length=None, filename=None,
                              z=None, diff_thresh=1.2,  sigma=0.8, as_angle=False,
-                             ct_calculation: Union[Literal['septum'], list, int, None] = 'septum'):
+                             ct_calculation: Union[Literal['septum'], list, int, None] = 'septum',
+                             norm_thresh=None, connected_component_filter=None, experiment=None):
         import numpy as np
         from scipy import ndimage
         from src.visualization.save import write_sitk
@@ -520,6 +542,10 @@ class CMRPhaseDetector:
         if vects_nda.dtype is not np.float32: vects_nda = vects_nda.astype("float32")
         if z is None:
             z = vects_nda.shape[1] // 2
+        if experiment is None:
+            experiment = self.Masker.focus_point
+        if isinstance(experiment, str):
+            experiment = experiment.lower()
         # vects_nda: vectors towards registered voxels (M->F), (40, 128, 128, 2)
         # mask: binary mask from use_segmentation, repeated to 3 channels repeated to match vects_nda, (40, 128, 128, 2)
         # norm_nda: vector_length, (40, 128, 128)
@@ -531,7 +557,7 @@ class CMRPhaseDetector:
 
         dim_ = vects_nda.shape[1:-1]
         # calc the norm (supervised and self-supervised is similar)
-        norm_mask, norm_nda = self.Masker.get_norm(dir_axis, vects_nda)
+        norm_mask, norm_nda = self.Masker.get_norm(dir_axis, vects_nda, norm_threshold=norm_thresh)
         norm_nda = norm_nda.astype(np.float16)
         all_masks = []
 
@@ -555,32 +581,44 @@ class CMRPhaseDetector:
                 # SKM Combine: Add option to differentiate between LAX and SAX to set z
             # SKM Combine: change here vects_nda to vects_nda_ma, to try out
             _, directions = self.get_directions(ct=ct, dim_=dim_, length=length, vects_nda=vects_nda, as_angle=as_angle,
-                                           diff_thresh=diff_thresh, masked=True)
+                                           diff_thresh=diff_thresh, masked=True,
+                                           connected_component_filter=connected_component_filter)
         else:
             # 1st center definition,
             # Volume center & norm_msk COM
             vects_nda_ma = vects_nda * np.broadcast_to(norm_mask[None, ..., None], shape=vects_nda.shape)
-            # ct =  np.array(dim_) // 2 ADD ct_calculation VOL or MSE here!
-            ct = CMRPhaseDetector.get_balanced_center(dim_, norm_mask)
+            # Select focus point: None/'mse' balances the volume center towards the norm-mask COM,
+            # 'vol' takes the plain volume center, 'septum'/'lv' use an anatomical focus point
+            if experiment == 'vol':
+                ct = np.array(dim_) // 2
+            elif experiment in ('septum', 'lv'):
+                ct = self.get_focus_point(masks, print_ct=DEBUG, calculation=ct_calculation, z=z)
+            else:
+                ct = CMRPhaseDetector.get_balanced_center(dim_, norm_mask)
             mask, directions = self.get_directions(ct=ct, dim_=dim_, length=length, vects_nda=vects_nda_ma,
                                               as_angle=as_angle,
-                                              sigma=sigma, diff_thresh=diff_thresh)
+                                              sigma=sigma, diff_thresh=diff_thresh,
+                                              connected_component_filter=connected_component_filter)
+            if mask is None:
+                mask = norm_mask
             all_masks.append(mask)
             if filename is not None: write_sitk(directions, filename=filename, suffix='dir1')
 
-            # 2nd center definition
-            # COM of a direction mask based on a minimal direction change over time
-            ct = np.array([*ndimage.center_of_mass(mask)[0:2]])
-            # SKM Combine: add here also 3D vs 2D option for focus point
-            # ct = np.array([int(z), *ndimage.center_of_mass(mask)[1:]])
-            mask, directions = self.get_directions(ct=ct, dim_=dim_, length=length, vects_nda=vects_nda_ma,
-                                              as_angle=as_angle,
-                                              sigma=sigma, diff_thresh=diff_thresh)
-            # SKM Combine: Check impact of binary opening
-            # structure = np.ones((1, 3, 3))
-            # mask = scipy.ndimage.binary_opening(mask, structure=structure, iterations=1)
-            if mask is None:
-                mask = norm_mask
+            # 2nd center definition: refine the center via COM of the direction mask - only for the
+            # balanced-center (None/'mse') mode; 'vol'/'septum'/'lv' keep the fixed 1st-step center
+            if experiment is None or experiment == 'mse':
+                ct = np.array([*ndimage.center_of_mass(mask)[0:2]])
+                # SKM Combine: add here also 3D vs 2D option for focus point
+                # ct = np.array([int(z), *ndimage.center_of_mass(mask)[1:]])
+                mask, directions = self.get_directions(ct=ct, dim_=dim_, length=length, vects_nda=vects_nda_ma,
+                                                  as_angle=as_angle,
+                                                  sigma=sigma, diff_thresh=diff_thresh,
+                                                  connected_component_filter=connected_component_filter)
+                # SKM Combine: Check impact of binary opening
+                # structure = np.ones((1, 3, 3))
+                # mask = scipy.ndimage.binary_opening(mask, structure=structure, iterations=1)
+                if mask is None:
+                    mask = norm_mask
 
             all_masks.append(mask)
 
@@ -690,7 +728,46 @@ class CMRPhaseDetector:
     def get_focus_point(self, mask2d: np.ndarray, calculation: Union[Literal['septum'], List, int, None] = 'septum',
                         z: int = None, print_ct=False, whole_mask=True):
         from scipy import ndimage
-        # SKM Combine: Where is the option for septum?
+
+        if calculation == 'septum':
+            from src.data.Preprocess import get_ip_from_2dmask
+
+            def _ips_from_slice(slice_2d):
+                return get_ip_from_2dmask(np.squeeze(slice_2d).astype(np.uint8))
+
+            if self.CMR3D:
+                # one timestep, full z-stack: average the insertion points found over all valid z-slices
+                mask3d = mask2d[0]
+                first_ips, second_ips = [], []
+                for z_slice in mask3d:
+                    first, second = _ips_from_slice(z_slice)
+                    if first is not None and second is not None:
+                        first_ips.append(first)
+                        second_ips.append(second)
+                focus = None
+                if len(first_ips) > 0:
+                    fip = np.array(first_ips).mean(axis=0)
+                    sip = np.array(second_ips).mean(axis=0)
+                    center = np.mean([fip, sip], axis=0)[::-1]  # (x,y) -> (y,x)
+                    focus = np.array([int(z), *center])
+            else:
+                # loop over time, use the first timestep where both insertion points are found
+                focus = None
+                for t_slice in mask2d:
+                    first, second = _ips_from_slice(t_slice)
+                    if first is not None and second is not None:
+                        focus = np.mean([first, second], axis=0)[::-1]  # (x,y) -> (y,x)
+                        break
+
+            if focus is None:
+                logging.error(
+                    "It was not possible to find intersection points to use the mid of septum as focus point.\n"
+                    "Will use whole mask center point instead.")
+                return self.get_focus_point(mask2d, calculation=[1, 2, 3], z=z, print_ct=print_ct,
+                                            whole_mask=whole_mask)
+            if print_ct: print('Using mid of septum as focus point')
+            return focus
+
         if type(calculation) == int:
             calculation = [calculation]
         mask_for_focus = self.Masker.get_as_single_mask(mask2d, channels=calculation,
@@ -846,10 +923,9 @@ class CMRViewMasker:
     def __init__(self, data_json: dict):
         from src.utils.Utils_io import get_post_processing
 
+        self.dataset_json = data_json
         self.view = data_json.get('view', 'sax')
-        self.CMR3D = False
-        if self.view == 'sax':
-            self.CMR3D = True
+        self.CMR3D = self.view.lower() == 'sax'
 
         # Settings for masking
         self.post_processing = get_post_processing(data_json)
@@ -861,13 +937,15 @@ class CMRViewMasker:
                   "MLV": 2,
                   "LVC": 3
         }
-        self.mask_labels = self.post_processing.get("labels", mask_labels)
+        self.mask_labels = self.dataset_json.get("labels", mask_labels)
         self.mask_channels = None
 
         self.norm_threshold = self.post_processing.get("norm_threshold", 40)
 
-        self.connected_component_filter = self.post_processing.get("connected_component_filter", None)
+        self.connected_component_filter = self.post_processing.get("cc_filter", None)
         if self.connected_component_filter is None: self.connected_component_filter = False
+
+        self.focus_point = self.post_processing.get("focus_point", None)
 
         if self.use_segmentation is None or self.use_segmentation is False:
             self.PRECOMPUTED_MASKS = False
