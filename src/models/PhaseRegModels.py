@@ -119,12 +119,12 @@ class PhaseRegressionModel:
                     return tf.divide(tf.subtract(x, tf.reduce_min(x)), tf.subtract(tf.reduce_max(x), tf.reduce_min(x)))
 
                 if self.CMR3D:
-                    self.segmentation_layer = keras.layers.Lambda(lambda x: K.stack(
-                        [segmentation_model(normalize(x))]
-                        , axis=1))
-                else:
                     self.segmentation_layer = keras.layers.Lambda(lambda x: tf.stack(
                         [segmentation_model(z_slice) for z_slice in tf.unstack(normalize(x), axis=1)]
+                        , axis=1))
+                else:
+                    self.segmentation_layer = keras.layers.Lambda(lambda x: K.stack(
+                        [segmentation_model(normalize(x))]
                         , axis=1))
             # End segmentation --------------------------------------------------------------->
 
@@ -264,7 +264,7 @@ class PhaseRegressionModel:
             features_given = False
 
             if self.PRETRAINED_SEG:
-                segmentation = TimeDistributed(self.segmentation_layer, name='segmentation')(self.input_tensor[..., 0])
+                segmentation = TimeDistributed(self.segmentation_layer, name='segmentation')(self.input_tensor[..., 0:1])
                 print(f'Segmentation shape: {segmentation.shape}')
 
             if (self.add_vect_norm and self.add_flows):  # use the magnitude and flow
