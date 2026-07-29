@@ -630,8 +630,7 @@ class CMRPhaseDetector:
         from src.data.Postprocess import minmax_lambda
         # SKM Combine: Check impact of line below, as it was not included in SAX:
         # directions = directions * minmax_lambda([norm_nda, 1, 2])
-        # SKM Combine: Differentiation for ax: SAX (1, 2, 3) and LAX (1, 2)
-        ax = (1, 2)
+        ax = (1, 2, 3) if self.CMR3D else (1, 2)
         directions_ma, dir_1d_mean = self.Masker.get_masked_array(directions, mask, axis=ax)
         norm_ma, norm_1d_mean = self.Masker.get_masked_array(norm_nda, mask, axis=ax)
 
@@ -668,14 +667,23 @@ class CMRPhaseDetector:
 
         ############################################
         zeros = np.zeros_like(moved)
-        zeros[
-            :, :, int(ct[0] - focus_size):int(ct[0] + focus_size), int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1
+        if self.CMR3D:
+            zeros[:,
+            int(ct[0] - focus_size):int(ct[0] + focus_size),
+            int(ct[1] - focus_size):int(ct[1] + focus_size),
+            int(ct[2] - focus_size):int(ct[2] + focus_size)] = 1
+            dir_t, norm_t, foc_t = directions_seg, norm_nda_seg, zeros  # already (T,Z,H,W) - no transpose needed
+        else:
+            zeros[:, :,
+            int(ct[0] - focus_size):int(ct[0] + focus_size),
+            int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1
+            dir_t = np.transpose(directions_seg[..., None], (0, 3, 1, 2))  # (T,1,H,W)
+            norm_t = np.transpose(norm_nda_seg[..., None], (0, 3, 1, 2))
+            foc_t = np.transpose(zeros, (0, 2, 3, 1))  # (T,H,W,1)
 
-        sitk_dir_seg = [sitk.GetImageFromArray(vol.astype('float32')) for vol in
-                        np.transpose(directions_seg[..., None], (0, 3, 1, 2))]
-        sitk_norm_seg = [sitk.GetImageFromArray(vol.astype('float32')) for vol in
-                         np.transpose(norm_nda_seg[..., None], (0, 3, 1, 2))]
-        sitk_foc_seg = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in np.transpose(zeros, (0, 2, 3, 1))]
+        sitk_dir_seg = [sitk.GetImageFromArray(vol.astype('float32')) for vol in dir_t]
+        sitk_norm_seg = [sitk.GetImageFromArray(vol.astype('float32')) for vol in norm_t]
+        sitk_foc_seg = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in foc_t]
 
         new_dir_clean_seg = sitk.JoinSeries(sitk_dir_seg)
         new_norm_clean_seg = sitk.JoinSeries(sitk_norm_seg)
@@ -836,7 +844,10 @@ class CMRPhaseDetector:
         logging.info('Saving example patients with direction as nrrd')
 
         # order of moved axis is wrong, so rearrange them:
-        moved = np.transpose(moved, (0, 1, 4, 2, 3))
+        if self.CMR3D:
+            moved = np.squeeze(moved, axis=-1)  # (N,T,Z,H,W): real Z axis already present, drop the redundant trailing channel-of-1
+        else:
+            moved = np.transpose(moved, (0, 1, 4, 2, 3))  # (N,T,C,H,W): use the channel-of-1 as the pseudo z-depth nrrd needs
         focus_size = round(moved.shape[-1] / 96)  # Setting size of focus point in depending on the size of the image
 
         self.write_4d_files_to_disk(examples, focus_size, PRETRAINED_SEG, config, example_path, moved, segmentation,
@@ -864,17 +875,31 @@ class CMRPhaseDetector:
                 norm_nda = norm_nda.data * ~norm_nda.mask
 
             zeros = np.zeros_like(moved[example])
-            zeros[:, :,
-            int(ct[0] - focus_size):int(ct[0] + focus_size),
-            int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1
+            if self.CMR3D:
+                zeros[:,
+                int(ct[0] - focus_size):int(ct[0] + focus_size),
+                int(ct[1] - focus_size):int(ct[1] + focus_size),
+                int(ct[2] - focus_size):int(ct[2] + focus_size)] = 1  # (T, z-box, y-box, x-box)
+            else:
+                zeros[:, :,
+                int(ct[0] - focus_size):int(ct[0] + focus_size),
+                int(ct[1] - focus_size):int(ct[1] + focus_size)] = 1  # (T, C=1, y-box, x-box)
 
             # Testen ob es auch direkt mit GetImageFromArray klappt, ohne for schleifen iteration
             sitk_images = [sitk.GetImageFromArray(vol.astype('float32')) for vol in moved[example]]
 
-            sitk_vects = [sitk.GetImageFromArray(vol.astype('float32'), isVector=True) for vol in
-                          np.transpose(vects[example], (3, 1, 2, 0))]
-            sitk_dir = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(directions)]
-            sitk_norm = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(norm_nda)]
+            if self.CMR3D:
+                vects_t = vects[example]  # (T,Z,H,W,3) - already matches sitk's isVector convention, no transpose needed
+            else:
+                vects_t = np.transpose(vects[example], (3, 1, 2, 0))  # (component, H, W, T)
+            sitk_vects = [sitk.GetImageFromArray(vol.astype('float32'), isVector=True) for vol in vects_t]
+            if self.CMR3D:
+                # directions/norm_nda are already (T,Z,H,W) - rearrange_axis_of_ndarray assumes a 3D input, no rearrange needed
+                sitk_dir = [sitk.GetImageFromArray(vol.astype('float32')) for vol in directions]
+                sitk_norm = [sitk.GetImageFromArray(vol.astype('float32')) for vol in norm_nda]
+            else:
+                sitk_dir = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(directions)]
+                sitk_norm = [sitk.GetImageFromArray(vol.astype('float32')) for vol in rearrange_axis_of_ndarray(norm_nda)]
             sitk_foc = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in zeros]
 
             # Define spacing for saving the images
@@ -905,8 +930,10 @@ class CMRPhaseDetector:
             save_sitk(sitk_foc, spacing, export_foc_f_name)
 
             if PRETRAINED_SEG:
-                sitk_mask = [sitk.GetImageFromArray(np.flipud(vol.astype(np.uint8))) for vol in
-                             np.transpose(segmentation[example], (0,  1, 2, 3))]
+                if self.CMR3D:
+                    sitk_mask = [sitk.GetImageFromArray(vol.astype(np.uint8)) for vol in segmentation[example]]
+                else:
+                    sitk_mask = [sitk.GetImageFromArray(np.flipud(vol.astype(np.uint8))) for vol in segmentation[example]]
                 new_mask_clean = sitk.JoinSeries(sitk_mask)
                 new_mask_clean.SetSpacing(spacing)
                 export_mask_f_name = os.path.join(example_path,
