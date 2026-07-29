@@ -167,15 +167,33 @@ def init_config(config, save=True):
 
 
 def init_json(json_data, file_path=None):
-    if file_path is None:
+    """
+    Initialize a json file with dataset information.
+
+    json_data: dict or str:
+        Either:
+        - a dictionary containing JSON data, or
+        - a path to an existing JSON file.
+    """
+    print(file_path)
+    if isinstance(json_data, (str, os.PathLike)):
+        if file_path is None:
+            return json_data
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        json_file = os.path.join(file_path, 'dataset.json')
+        with open(json_file, 'w') as json_file_path:
+            json.dump(json_data, json_file_path, indent=4)
+
         return json_data
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
-    json_file = os.path.join(file_path, 'dataset.json')
-    with open(json_file, 'w') as json_file_path:
-        json.dump(json_data, json_file_path, indent=4)
 
-    return json_data
+    if isinstance(json_data, dict):
+            if file_path is not None:
+                os.makedirs(file_path, exist_ok=True)
+                json_file = os.path.join(file_path, 'dataset.json')
+                with open(json_file, 'w') as f:
+                    json.dump(json_data, f, indent=4)
 
+            return json_data
 
 def get_json(search_pattern, file_path):
     search_path = os.path.join(file_path, search_pattern)

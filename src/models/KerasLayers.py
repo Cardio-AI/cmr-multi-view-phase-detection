@@ -597,9 +597,9 @@ minmax_lambda = lambda x: x[1] + (((x[0] - np.min(x[0])) * (x[2] - x[1])) / (np.
 
 def get_focus_tf(p, dim=[12, 12, 12]):
     return tf.cast(
-        tf.tile(tf.convert_to_tensor([*p])[tf.newaxis, tf.newaxis, tf.newaxis, ...],
-                (*dim, 1)) if len(dim) == 2 else
         tf.tile(tf.convert_to_tensor([*p])[tf.newaxis, tf.newaxis, ...],
+                (*dim, 1)) if len(dim) == 2 else
+        tf.tile(tf.convert_to_tensor([*p])[tf.newaxis, tf.newaxis, tf.newaxis, ...],
                 (*dim, 1))
         , tf.float32)
 

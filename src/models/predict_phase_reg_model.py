@@ -198,14 +198,14 @@ class CMRPhaseDetector:
                 segmentation = None
 
 
-
-            self.write_random_example_4d_files_to_disk(self.PRETRAINED_SEG or self.Masker.PRECOMPUTED_MASKS, self.config, example_path, moved,
-                                                       number_of_examples,
-                                                       segmentation,
-                                                       vects, x_val_cmr_,
-                                                       norm_thresh=self.Masker.norm_threshold,
-                                                       connected_component_filter=self.Masker.connected_component_filter,
-                                                       mask_channels=self.Masker.mask_channels)
+            if number_of_examples > 0:
+                self.write_random_example_4d_files_to_disk(self.PRETRAINED_SEG or self.Masker.PRECOMPUTED_MASKS, self.config, example_path, moved,
+                                                           number_of_examples,
+                                                           segmentation,
+                                                           vects, x_val_cmr_,
+                                                           norm_thresh=self.Masker.norm_threshold,
+                                                           connected_component_filter=self.Masker.connected_component_filter,
+                                                           mask_channels=self.Masker.mask_channels)
 
         del validation_generator
         del model
@@ -217,9 +217,10 @@ class CMRPhaseDetector:
         logging.info('saved as: \n{}\n{} \n example patients processed!'.format(pred_filename, patients_filename))
 
 
-    def predict_phase_from_deformable(self, create_figures=True,  dir_axis=0, roll_by_gt=True,
-                                  normalise_dir=False, normalise_norm=False, return_files=False,
-                                  ct_calculation='septum', save_dir_as_nrrd=False, max_junks=None):
+    def predict_phase_from_deformable(self, create_figures=True,   norm_thresh=50, dir_axis=0, roll_by_gt=True,
+                                  normalise_dir=False, normalise_norm=False, return_files=False, mask_channels=None,
+                                  ct_calculation='septum', save_dir_as_nrrd=False, max_junks=None,
+                                  connected_component_filter=None, exp_mode = None, diff_thresh=1.0):
         """
         Predict the temporal occurence for five cardiac phases from a cmr-phase-regression experiment folder
         Expects to find all files written from a CV-experiment, e.g.> train_regression_model.py
@@ -428,9 +429,7 @@ class CMRPhaseDetector:
         import tensorflow as tf
         import scipy.ndimage
         from src.models.KerasLayers import get_idxs_tf, get_focus_tf, flow2direction_lambda
-
         idx = get_idxs_tf(dim_)
-        # SKM Combine: in SAX it is defined as: c = get_focus_tf(ct, dim_)
         c = get_focus_tf(ct[0:len(dim_)], dim_)
         centers = c - idx
         centers_tensor = centers[tf.newaxis, ...]

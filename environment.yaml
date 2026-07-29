@@ -1,4 +1,4 @@
-name: cmr-phases
+name: cmr-phases-test
 channels:
   - defaults
 dependencies:

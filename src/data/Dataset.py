@@ -10,6 +10,14 @@ from src.utils.Utils_io import ensure_dir
 
 DEBUG = False
 
+# Define patterns and their regex
+PATIENT_ID_PATTERNS = [
+    r'\d+-([a-zA-Z0-9]+)_\d{4}-\d{2}-\d{2}.*',  # Pattern 1 (GCN): 0000-0ae4r74l_1900-01-01_...
+    r'(\d+)_(S|L)A_CINE.*',  # Pattern 2 (MnMs2): 039_LA_CINE.nii.gz
+    r'patient(\d+)_.*',  # Pattern 3 (ACDC): patient001_4d.nii.gz
+    r'(\S +)_sa.*',  # Pattern 4 (MnMS): A0S9V9_sa.nii.gz
+    # add your pattern here
+]
 
 
 def get_trainings_files(data_path, suffix=None, ftype=None, fold=0, path_to_folds_df=None):
@@ -33,6 +41,7 @@ def get_trainings_files(data_path, suffix=None, ftype=None, fold=0, path_to_fold
 
     img_suffix = "*{}{}".format(suffix["image_suffix"], ftype)
     # load the cmr files with given pattern from the data path
+    print(data_path, img_suffix)
     x = sorted(glob.glob(os.path.join(data_path, '**', img_suffix), recursive=True))
 
     if len(x) == 0:
@@ -304,14 +313,7 @@ def extract_id(filename):
     Extract patient id from given filename. Three patterns pre-defined (GCN, MnM2 and ACD) change here, if different pattern used
     """
     import re
-    # Define patterns and their regex
-    patterns = [
-        r'\d+-([a-zA-Z0-9]+)_\d{4}-\d{2}-\d{2}.*',  # Pattern 1 (GCN): 0000-0ae4r74l_1900-01-01_...
-        r'(\d+)_LA_CINE.*',  # Pattern 2 (MnMs2): 039_LA_CINE.nii.gz
-        r'patient(\d+)_.*'  # Pattern 3 (ACDC): patient001_4d.nii.gz
-    ]
-
-    for pattern in patterns:
+    for pattern in PATIENT_ID_PATTERNS:
         match = re.search(pattern, filename)
         if match:
             return match.group(1)  # Extract the first capture group
@@ -465,19 +467,25 @@ def all_files_in_df(METADATA_FILE, x_train_sax, x_val_sax):
     logging.info('Check if we find the patient ID and phase mapping for all: {} files.'.format(len(files_)))
     for x in files_:
         try:
-            patient_str, ind, indices = '', '', ''
-            patient_str = re.search('-(.{8})_', x)
-            if patient_str:  # GCN data
-                patient_str = patient_str.group(1).upper()
-                assert (
-                        len(patient_str) == 8), 'matched patient ID from the phase sheet has a length of: {}, expected a length of 8 for GCN data'.format(
-                    len(patient_str))
-            else:  # DMD data
-                patient_str = os.path.basename(x).split('_volume')[0].lower()
 
-            if 'nii.gz' in patient_str:  # ACDC files e.g.: patient001_4d.nii.gz
-                patient_str = re.search('patient(.{3})_', x)
-                patient_str = patient_str.group(1).upper()
+            patient_str, ind, indices = '', '', ''
+            patient_str = extract_id(x)
+            if patient_str is None:
+                raise ValueError(f'Could not extract patient ID from filename: {x}')
+            patient_str = str(patient_str).upper()
+            logging.debug(f'File: {x} -> Patient ID: {patient_str}')
+            # patient_str = re.search('-(.{8})_', x)
+            # if patient_str:  # GCN data
+            #     patient_str = patient_str.group(1).upper()
+            #     assert (
+            #             len(patient_str) == 8), 'matched patient ID from the phase sheet has a length of: {}, expected a length of 8 for GCN data'.format(
+            #         len(patient_str))
+            # else:  # DMD data
+            #     patient_str = os.path.basename(x).split('_volume')[0].lower()
+            #
+            # if 'nii.gz' in patient_str:  # ACDC files e.g.: patient001_4d.nii.gz
+            #     patient_str = re.search('patient(.{3})_', x)
+            #     patient_str = patient_str.group(1).upper()
 
             assert len(
                 patient_str) > 0, 'empty patient id found, please check the get_patient_id in fn train_fold(), usually there are path problems'
@@ -491,8 +499,8 @@ def all_files_in_df(METADATA_FILE, x_train_sax, x_val_sax):
 
         except Exception as e:
             logging.info(e)
-            logging.info(patient_str)
-            logging.info(ind)
+            logging.info(f"Patient ID: {patient_str}")
+            logging.info(f"Matching metadata: {ind}")
             logging.info('indices: \n{}'.format(indices))
             all_present = False
     logging.info('Check done!')

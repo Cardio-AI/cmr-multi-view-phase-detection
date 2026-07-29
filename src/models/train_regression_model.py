@@ -2,6 +2,8 @@ import logging
 
 def train_fold(config, dataset_json, view="sax", in_memory=False):
     # make sure necessary config params are given, otherwise replace with default
+    import os
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
     import tensorflow as tf
     import numpy as np
     tf.get_logger().setLevel('FATAL')
@@ -56,15 +58,14 @@ def train_fold(config, dataset_json, view="sax", in_memory=False):
     ensure_dir(TENSORBOARD_PATH)
     ensure_dir(CONFIG_PATH)
 
-    DATA_PATH_CMR = config.get('DATA_PATH_' + view)
+    DATA_PATH_CMR = config.get('DATA_PATH_CMR')
     DF_FOLDS = config.get('DF_FOLDS', None)
     DF_META = config.get('DF_META', None)
     EPOCHS = config.get('EPOCHS', 100)
 
     ConsoleAndFileLogger(path=FOLD_PATH, log_lvl=logging.INFO)
     config = init_config(config=locals(), save=True)
-    if type(dataset_json) is str:
-        dataset_json = init_json(dataset_json, CONFIG_PATH)
+    dataset_json = init_json(dataset_json, CONFIG_PATH)
     logging.info('Is built with tensorflow: {}'.format(tf.test.is_built_with_cuda()))
     logging.info('Visible devices:\n{}'.format(tf.config.list_physical_devices()))
 
@@ -105,6 +106,7 @@ def train_fold(config, dataset_json, view="sax", in_memory=False):
     val_config['HIST_MATCHING'] = False
     val_config['AUGMENT_TEMP'] = False
     validation_generator = PhaseRegressionGenerator_v2(x_val_cmr, x_val_cmr, config=val_config, dataset_json=dataset_json, in_memory=in_memory)
+
 
     import matplotlib.pyplot as plt
     from src.visualization.Visualize import show_2D_or_3D
