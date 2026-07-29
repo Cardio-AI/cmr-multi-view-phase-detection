@@ -68,11 +68,22 @@ File names are used to extract patient IDS, which must match those in phases.csv
 
 Supported regex patterns (from source datasets):
 - ```r'\d+-([a-zA-Z0-9]+)_\d{4}-\d{2}-\d{2}.*'```  -> GCN: 0000-0ae4r74l_1900-01-01_...
-- ```r'(\d+)_LA_CINE.*'```  -> M&Ms and M&Ms-2: 039_LA_CINE.nii.gz
+- ```r'(\d+)_(S|L)A_CINE.*'```  -> M&Ms-2: 039_SA_CINE.nii.gz or 039_LA_CINE.nii.gz
 - ```r'patient(\d+)_.*'```  -> ACDC: patient001_4d.nii.gz
+-  ```r'(\S +)_sa.*```  -> M&Ms: A0S9V9_sa.nii.gz
 
 If your dataset uses a different convention, add your regex pattern to:
-```src/data/Dataset.py -> extract_id```.
+```src/data/Dataset.py:
+
+# Define patterns and their regex
+PATIENT_ID_PATTERNS = [
+    r'\d+-([a-zA-Z0-9]+)_\d{4}-\d{2}-\d{2}.*',  # Pattern 1 (GCN): 0000-0ae4r74l_1900-01-01_...
+    r'(\d+)_(S|L)A_CINE.*',  # Pattern 2 (MnMs2): 039_LA_CINE.nii.gz
+    r'patient(\d+)_.*',  # Pattern 3 (ACDC): patient001_4d.nii.gz
+    r'(\S +)_sa.*',  # Pattern 4 (MnMS): A0S9V9_sa.nii.gz
+    # add your pattern here
+]
+```.
 
 ### Metadata files
 
@@ -88,7 +99,7 @@ If your dataset uses a different convention, add your regex pattern to:
     ``` 
 
 #### ``df_kfold.csv`` - K-fold split definition
-- Required if you want cross-validation
+- Optional, only required if you want cross-validation
 - Format: one row per patient per fold. Must include patient ID, fold index, and split assignment (train/test)
 - Example (4-fold):
     
