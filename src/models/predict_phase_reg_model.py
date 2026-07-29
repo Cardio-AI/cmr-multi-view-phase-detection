@@ -483,8 +483,7 @@ class CMRPhaseDetector:
             dir_mask = diff >= diff_thresh
 
             # binary opening removes single voxels and close crushed vessels
-            # SKM Combine:  SAX/LAX difference structure = np.ones((1, 3, 3))
-            structure = np.ones((3, 3))
+            structure = np.ones((1, 3, 3)) if self.CMR3D else np.ones((3, 3))
             dir_mask = scipy.ndimage.binary_opening(dir_mask, structure=structure, iterations=1)
 
         elif norm_thresh == 0:
@@ -607,9 +606,7 @@ class CMRPhaseDetector:
             # 2nd center definition: refine the center via COM of the direction mask - only for the
             # balanced-center (None/'mse') mode; 'vol'/'septum'/'lv' keep the fixed 1st-step center
             if experiment is None or experiment == 'mse':
-                ct = np.array([*ndimage.center_of_mass(mask)[0:2]])
-                # SKM Combine: add here also 3D vs 2D option for focus point
-                # ct = np.array([int(z), *ndimage.center_of_mass(mask)[1:]])
+                ct = np.array([*ndimage.center_of_mass(mask)])  # (y,x) for LAX, (z,y,x) for SAX - matches dim_'s length
                 mask, directions = self.get_directions(ct=ct, dim_=dim_, length=length, vects_nda=vects_nda_ma,
                                                   as_angle=as_angle,
                                                   sigma=sigma, diff_thresh=diff_thresh,
